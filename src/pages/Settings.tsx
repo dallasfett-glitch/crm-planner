@@ -515,7 +515,7 @@ export const Settings: React.FC = () => {
           <div className="bg-crm-card border border-crm-border rounded-2xl p-6 shadow-md space-y-6">
             <div className="flex items-center space-x-2 border-b border-crm-border/60 pb-3">
               <Sliders className="h-5 w-5 text-primary" />
-              <h3 className="text-sm font-bold uppercase tracking-wider text-crm-muted">Predictive Cadence configuration</h3>
+              <h3 className="text-sm font-bold uppercase tracking-wider text-crm-muted">Cadence Configuration</h3>
             </div>
 
             {error && (

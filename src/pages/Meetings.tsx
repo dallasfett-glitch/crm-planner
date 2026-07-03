@@ -9,17 +9,18 @@ import { useUserStore } from '../stores/useUserStore';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { 
-  Plus, 
-  Calendar, 
-  Clock, 
-  ChevronLeft, 
-  ChevronRight, 
-  X, 
-  AlertCircle, 
-  Edit, 
-  User, 
-  Sliders, 
-  MessageSquarePlus, 
+  Plus,
+  Calendar,
+  Clock,
+  ChevronLeft,
+  ChevronRight,
+  X,
+  AlertCircle,
+  Edit,
+  User,
+  Users,
+  Sliders,
+  MessageSquarePlus,
   Trash2,
   Check,
   Sparkles,
@@ -91,11 +92,73 @@ export const Meetings: React.FC = () => {
   const [selectedSalespersonId, setSelectedSalespersonId] = useState(() => user?.uid || '');
   const resolvedSalespersonId = canViewAllSchedules ? (selectedSalespersonId || user?.uid || '') : (user?.uid || '');
 
+  // At-risk contacts modal
+  const [atRiskModalOpen, setAtRiskModalOpen] = useState(false);
+
+  // Calendar export state — set after a meeting is saved
+  const [justScheduled, setJustScheduled] = useState<{ contactName: string; companyName: string; scheduledAt: string } | null>(null);
+
+  const buildGoogleCalendarUrl = (contactName: string, companyName: string, scheduledAt: string) => {
+    const start = new Date(scheduledAt);
+    const end = new Date(start.getTime() + 60 * 60 * 1000);
+    const fmt = (d: Date) => d.toISOString().replace(/[-:]/g, '').split('.')[0];
+    const params = new URLSearchParams({
+      text: `Meeting with ${contactName} (${companyName})`,
+      dates: `${fmt(start)}/${fmt(end)}`,
+      details: 'Scheduled via Northstar CRM',
+    });
+    return `https://calendar.google.com/calendar/r/eventedit?${params.toString()}`;
+  };
+
+  const downloadICS = (contactName: string, companyName: string, scheduledAt: string) => {
+    const start = new Date(scheduledAt);
+    const end = new Date(start.getTime() + 60 * 60 * 1000);
+    const fmt = (d: Date) => d.toISOString().replace(/[-:]/g, '').split('.')[0];
+    const ics = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//Northstar CRM//EN',
+      'BEGIN:VEVENT',
+      `DTSTART:${fmt(start)}`,
+      `DTEND:${fmt(end)}`,
+      `SUMMARY:Meeting with ${contactName} (${companyName})`,
+      'DESCRIPTION:Scheduled via Northstar CRM',
+      `UID:${Date.now()}@northstar-crm`,
+      'END:VEVENT',
+      'END:VCALENDAR',
+    ].join('\r\n');
+    const blob = new Blob([ics], { type: 'text/calendar' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `meeting-${contactName.replace(/\s+/g, '-').toLowerCase()}.ics`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   // Add/Edit schedule dialog state
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [selectedContactId, setSelectedContactId] = useState('');
   const [scheduledAtTime, setScheduledAtTime] = useState('');
   const [addError, setAddError] = useState<string | null>(null);
+  // Schedule modal — company filter + custom date/time picker
+  const [schedCompanyFilter, setSchedCompanyFilter] = useState('ALL');
+  const [pickerViewDate, setPickerViewDate] = useState(() => new Date());
+  const [pickedDate, setPickedDate] = useState('');
+  const [pickedTime, setPickedTime] = useState('09:00');
+
+  const openScheduleModal = (preContactId = '') => {
+    const base = new Date(selectedMonth + '-01');
+    setSchedCompanyFilter('ALL');
+    setPickerViewDate(new Date(base.getFullYear(), base.getMonth(), 1));
+    setPickedDate('');
+    setPickedTime('09:00');
+    setScheduledAtTime('');
+    setSelectedContactId(preContactId);
+    setAddError(null);
+    setJustScheduled(null);
+    setAddModalOpen(true);
+  };
 
   // Details drawer slide-over panel state
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -151,7 +214,7 @@ export const Meetings: React.FC = () => {
   // Tab control: 'table' vs 'map' (Geographic Route Planning)
   const [activeTab, setActiveTab] = useState<'table' | 'map'>('table');
 
-  // AI Tailor email assist modal state
+  // Email draft modal state
   const [aiTailorOpen, setAiTailorOpen] = useState(false);
   const [aiTailorMeeting, setAiTailorMeeting] = useState<Meeting | null>(null);
   const [aiTailorTone, setAiTailorTone] = useState<'professional' | 'friendly' | 'direct'>('professional');
@@ -164,6 +227,8 @@ export const Meetings: React.FC = () => {
   const [geocodedCoords, setGeocodedCoords] = useState<Record<string, [number, number]>>({});
   const [ambiguousMeetings, setAmbiguousMeetings] = useState<Record<string, 'error' | 'unresolved' | 'ambiguous'>>({});
   const [disambiguationOptions, setDisambiguationOptions] = useState<{ meetId: string; cacheKey: string; matches: { display_name: string; lat: string; lon: string }[] } | null>(null);
+
+  const [commentTooltip, setCommentTooltip] = useState<{ x: number; y: number; title: string; body: string } | null>(null);
 
   const getSessionBoundingBox = (): string | null => {
     try {
@@ -232,33 +297,52 @@ export const Meetings: React.FC = () => {
   // 1. Month Progress: Total confirmed + completed meetings
   const confirmedCount = filteredMeetings.filter(m => m.status === 'pending' || m.status === 'completed').length;
   
-  // 2. Coverage Gaps: Number of Tier contacts missing a scheduled meeting this month
-  const coverageGapsCount = contacts.filter(contact => {
-    // Check if this contact has *any* scheduled meeting (suggested, pending, completed) in the active month
+  // 2. Coverage Gaps: Contacts missing a scheduled meeting this month whose cadence has lapsed
+  const thresholds = { A: 30, B: 60, C: 90 };
+  const coverageGapsContacts = contacts.filter(contact => {
     const hasMonthMeeting = meetings.some(m => m.contactId === contact.id && m.month === selectedMonth && m.salespersonId === resolvedSalespersonId);
     if (hasMonthMeeting) return false;
-
-    // Calculate elapsed touchpoint time
     const contactCompleted = meetings.filter(m => m.contactId === contact.id && m.status === 'completed');
     let lastMeet: Date;
     if (contactCompleted.length > 0) {
       const sorted = [...contactCompleted].sort((a, b) => new Date(b.completedAt || b.scheduledAt).getTime() - new Date(a.completedAt || a.scheduledAt).getTime());
       lastMeet = new Date(sorted[0].completedAt || sorted[0].scheduledAt);
     } else {
-      // Simulate that no meeting was had, exceeding typical thresholds
       const offsetDays = contact.tier === 'A' ? 35 : contact.tier === 'B' ? 65 : 95;
       lastMeet = new Date(now - 1000 * 60 * 60 * 24 * offsetDays);
     }
     const daysSince = Math.max(0, Math.floor((now - lastMeet.getTime()) / (1000 * 60 * 60 * 24)));
-    const thresholds = { A: 30, B: 60, C: 90 };
     return daysSince >= thresholds[contact.tier];
-  }).length;
+  });
+  const coverageGapsCount = coverageGapsContacts.length;
 
-  // 3. Time Saved by automation: 0.5 hours per suggested or approved automation item
-  const suggestedMeetingsCount = filteredMeetings.filter(m => m.status === 'suggested').length;
-  const approvedSuggestionsCount = filteredMeetings.filter(m => (m.status === 'pending' || m.status === 'completed') && m.whyContext).length;
-  const totalAutomationItems = suggestedMeetingsCount + approvedSuggestionsCount;
-  const timeSavedHours = totalAutomationItems * 0.5;
+  // 3. Contacts Touched: unique contacts with a real meeting this month
+  const touchedContactIds = new Set(
+    filteredMeetings
+      .filter(m => m.status === 'completed')
+      .map(m => m.contactId)
+  );
+  const contactsTouchedCount = touchedContactIds.size;
+  const totalActiveContacts = contacts.filter(c =>
+    c.assignedSalespersonId === resolvedSalespersonId && c.status !== 'inactive'
+  ).length;
+
+  // 4. Follow-ups Pending: completed meetings with a follow-up outcome (or explicit date) and no subsequent meeting booked
+  const followUpOutcomeLabels = new Set(
+    customOutcomes.filter(o => o.workflow === 'follow-up').map(o => o.label)
+  );
+  const followUpsPendingCount = meetings.filter(m =>
+    m.salespersonId === resolvedSalespersonId &&
+    m.status === 'completed' &&
+    (m.followUpDate || followUpOutcomeLabels.has(m.outcome || '')) &&
+    !meetings.some(fm =>
+      fm.contactId === m.contactId &&
+      fm.salespersonId === resolvedSalespersonId &&
+      fm.id !== m.id &&
+      (m.followUpDate ? fm.month >= m.followUpDate.substring(0, 7) : fm.month > m.month) &&
+      (fm.status === 'pending' || fm.status === 'suggested' || fm.status === 'completed')
+    )
+  ).length;
 
   const handleOpenDrawer = (meeting: Meeting) => {
     if (meeting.status === 'suggested') return; // Must approve first to log comments
@@ -269,30 +353,6 @@ export const Meetings: React.FC = () => {
     setDrawerOpen(true);
   };
 
-  const handleToggleCompleted = async (meeting: Meeting, completed: boolean) => {
-    try {
-      const updates = {
-        status: (completed ? 'completed' : 'pending') as 'completed' | 'pending',
-        completedAt: completed ? new Date().toISOString() : null,
-      };
-      await updateMeeting(meeting.id, updates);
-      
-      if (activeMeeting?.id === meeting.id) {
-        setActiveMeeting({ ...activeMeeting, ...updates });
-      }
-
-      await addNote({
-        content: `[Meeting Status Change]: Meeting was flagged as ${completed ? 'COMPLETED' : 'PENDING'}.`,
-        parentId: meeting.contactId,
-        parentType: 'contact',
-        createdBy: user?.uid || '',
-        createdByName: user?.displayName || 'System Log',
-      });
-    } catch (err) {
-      console.error('Failed to toggle meeting status:', err);
-    }
-  };
-
   const handleApproveSuggested = async (meeting: Meeting) => {
     try {
       await approveMeeting(meeting.id);
@@ -301,11 +361,11 @@ export const Meetings: React.FC = () => {
       addToast(`Future Hook: Checking Google/Outlook Calendar availability... Created calendar draft & sent invite to ${meeting.contactName}!`);
 
       await addNote({
-        content: `[Predictive Meeting Planner]: Approved suggested meeting draft. Shifted status to AWAITING MEETING.`,
+        content: `[Meeting Planner]: Approved suggested meeting draft. Shifted status to AWAITING MEETING.`,
         parentId: meeting.contactId,
         parentType: 'contact',
         createdBy: user?.uid || '',
-        createdByName: user?.displayName || 'AI System Agent',
+        createdByName: user?.displayName || 'System',
       });
     } catch (err) {
       console.error('Failed to approve suggested meeting:', err);
@@ -422,9 +482,16 @@ export const Meetings: React.FC = () => {
 
     try {
       await addMeeting(meetingData);
-      setAddModalOpen(false);
       setSelectedContactId('');
       setScheduledAtTime('');
+      setPickedDate('');
+      setPickedTime('09:00');
+      setSchedCompanyFilter('ALL');
+      setJustScheduled({
+        contactName: contact.name,
+        companyName: contact.companyName,
+        scheduledAt: meetingData.scheduledAt,
+      });
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : 'Failed to schedule meeting.';
       setAddError(errMsg);
@@ -909,8 +976,22 @@ export const Meetings: React.FC = () => {
   };
 
   return (
+    <>
+      {commentTooltip && (
+        <div
+          className="fixed z-[500] w-80 bg-crm-card border border-crm-border text-crm-text text-xs rounded-2xl p-4 shadow-xl leading-relaxed pointer-events-none"
+          style={{ left: commentTooltip.x, top: commentTooltip.y }}
+        >
+          <div className="font-bold text-primary mb-2 flex items-center space-x-1.5 pb-2 border-b border-crm-border">
+            <Sparkles className="h-3.5 w-3.5 text-primary shrink-0" />
+            <span className="font-bold">{commentTooltip.title}</span>
+          </div>
+          <p className="text-crm-muted leading-relaxed mt-0.5">{commentTooltip.body}</p>
+        </div>
+      )}
+
     <div className="space-y-6 relative h-full text-crm-text animate-fade-in">
-      
+
       {/* Toast Alert Box */}
       <div className="fixed bottom-4 right-4 z-50 space-y-2 max-w-sm pointer-events-none">
         {toasts.map(t => (
@@ -953,10 +1034,7 @@ export const Meetings: React.FC = () => {
               <span>Update Schedule</span>
             </button>
             <button
-              onClick={() => {
-                setAddError(null);
-                setAddModalOpen(true);
-              }}
+              onClick={() => openScheduleModal()}
               className="flex-1 sm:flex-initial flex items-center justify-center space-x-2 bg-primary hover:bg-primary-hover text-white px-4 py-2.5 rounded-xl font-semibold text-sm transition shadow-lg shadow-primary/10 cursor-pointer"
             >
               <Plus className="h-4 w-4" />
@@ -967,7 +1045,7 @@ export const Meetings: React.FC = () => {
       </div>
 
       {/* Section 3.C: Top-Bar Metrics KPI Cards (SaaS Value Indicators) */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
         
         {/* KPI 1: Month Progress */}
         <div className="bg-crm-card border border-crm-border p-5 rounded-2xl flex flex-col justify-between shadow-sm hover:shadow transition relative">
@@ -1009,9 +1087,8 @@ export const Meetings: React.FC = () => {
             <div className="flex items-center space-x-1.5 relative group">
               <span className="text-xs font-bold text-crm-muted uppercase tracking-wider">Coverage Gaps</span>
               <Info className="h-3.5 w-3.5 text-crm-muted cursor-help hover:text-primary transition" />
-              {/* Tooltip */}
               <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-50 w-64 bg-slate-900 text-white text-[11px] rounded-xl p-3.5 shadow-xl border border-slate-800 font-normal leading-relaxed text-left normal-case">
-                Percentage of target client list with no recorded touchpoint within the current cadence cycle.
+                Contacts with no scheduled meeting this month whose cadence threshold has been exceeded. Click to see who.
                 <div className="absolute top-full left-4 border-[6px] border-transparent border-t-slate-900"></div>
               </div>
             </div>
@@ -1024,30 +1101,70 @@ export const Meetings: React.FC = () => {
               {coverageGapsCount} {coverageGapsCount === 1 ? 'Client' : 'Clients'} at Risk
             </p>
             <p className="text-xs text-crm-muted mt-1 font-medium">Cadence period exceeded without touchpoint</p>
+            {coverageGapsCount > 0 && (
+              <button
+                onClick={() => setAtRiskModalOpen(true)}
+                className="mt-3 text-xs font-bold text-rose-500 hover:text-rose-600 underline underline-offset-2 transition"
+              >
+                View {coverageGapsCount} at-risk {coverageGapsCount === 1 ? 'client' : 'clients'} →
+              </button>
+            )}
           </div>
         </div>
 
-        {/* KPI 3: Time Saved */}
+        {/* KPI 3: Contacts Touched */}
         <div className="bg-crm-card border border-crm-border p-5 rounded-2xl flex flex-col justify-between shadow-sm hover:shadow transition relative">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center space-x-1.5 relative group">
-              <span className="text-xs font-bold text-crm-muted uppercase tracking-wider">Time Saved</span>
+              <span className="text-xs font-bold text-crm-muted uppercase tracking-wider">Contacts Touched</span>
               <Info className="h-3.5 w-3.5 text-crm-muted cursor-help hover:text-primary transition" />
-              {/* Tooltip */}
               <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-50 w-64 bg-slate-900 text-white text-[11px] rounded-xl p-3.5 shadow-xl border border-slate-800 font-normal leading-relaxed text-left normal-case">
-                Total administrative hours saved via automated scheduling, AI-generated drafts, and route optimization.
+                Unique contacts with at least one scheduled or completed meeting this month vs. total active contacts in your portfolio.
                 <div className="absolute top-full left-4 border-[6px] border-transparent border-t-slate-900"></div>
               </div>
             </div>
-            <div className="p-1.5 rounded-lg bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20">
-              <Sparkles className="h-4.5 w-4.5" />
+            <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+              <Users className="h-4.5 w-4.5" />
+            </div>
+          </div>
+          <div>
+            <div className="flex justify-between items-baseline mb-1.5">
+              <p className="text-2xl font-extrabold text-crm-text">
+                {contactsTouchedCount} / {totalActiveContacts}
+              </p>
+              <span className="text-xs font-bold text-emerald-600">
+                {totalActiveContacts > 0 ? `${Math.round((contactsTouchedCount / totalActiveContacts) * 100)}%` : '0%'}
+              </span>
+            </div>
+            <div className="w-full h-1.5 bg-crm-bg rounded-full overflow-hidden">
+              <div
+                className="h-full bg-emerald-500 rounded-full transition-all duration-300"
+                style={{ width: `${totalActiveContacts > 0 ? Math.min(100, (contactsTouchedCount / totalActiveContacts) * 100) : 0}%` }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* KPI 4: Follow-ups Pending */}
+        <div className="bg-crm-card border border-crm-border p-5 rounded-2xl flex flex-col justify-between shadow-sm hover:shadow transition relative">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center space-x-1.5 relative group">
+              <span className="text-xs font-bold text-crm-muted uppercase tracking-wider">Follow-ups Pending</span>
+              <Info className="h-3.5 w-3.5 text-crm-muted cursor-help hover:text-primary transition" />
+              <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-50 w-64 bg-slate-900 text-white text-[11px] rounded-xl p-3.5 shadow-xl border border-slate-800 font-normal leading-relaxed text-left normal-case">
+                Meetings where a follow-up date was set but no subsequent meeting has been scheduled for that contact yet.
+                <div className="absolute top-full left-4 border-[6px] border-transparent border-t-slate-900"></div>
+              </div>
+            </div>
+            <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+              <Clock className="h-4.5 w-4.5" />
             </div>
           </div>
           <div>
             <p className="text-2xl font-extrabold text-crm-text">
-              ~{timeSavedHours} Hours
+              {followUpsPendingCount} {followUpsPendingCount === 1 ? 'Meeting' : 'Meetings'}
             </p>
-            <p className="text-xs text-crm-muted mt-1 font-medium">Saved via predictive scheduling this month</p>
+            <p className="text-xs text-crm-muted mt-1 font-medium">Follow-up date set but not yet rescheduled</p>
           </div>
         </div>
 
@@ -1145,7 +1262,7 @@ export const Meetings: React.FC = () => {
                 className="flex items-center space-x-1.5 bg-primary hover:bg-primary-hover text-white text-xs px-3.5 py-2 rounded-xl font-bold transition shadow-md shadow-primary/20 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
               >
                 <Navigation className={`h-3.5 w-3.5 ${isOptimizing ? 'animate-spin' : ''}`} />
-                <span>{isOptimizing ? 'Calculating AI Route...' : 'Optimize Route'}</span>
+                <span>{isOptimizing ? 'Optimizing...' : 'Optimize Route'}</span>
               </button>
             </div>
 
@@ -1246,7 +1363,7 @@ export const Meetings: React.FC = () => {
                 <div className="flex items-start space-x-2.5">
                   <Sparkles className="h-4.5 w-4.5 text-primary shrink-0 mt-0.5" />
                   <div>
-                    <h5 className="text-xs font-bold text-primary">AI Route Notes</h5>
+                    <h5 className="text-xs font-bold text-primary">Route Notes</h5>
                     <p className="text-[11px] text-crm-muted mt-1 leading-relaxed">
                       {getRouteNotes()}
                     </p>
@@ -1256,7 +1373,7 @@ export const Meetings: React.FC = () => {
             ) : (
               <div className="bg-slate-500/5 border border-crm-border p-4 rounded-2xl">
                 <p className="text-[11px] text-crm-muted leading-relaxed">
-                  Click <strong>"Optimize Route"</strong> to trigger the AI trip routing engine. It clusters nearby states and sequences client priorities to save transit times.
+                  Click <strong>"Optimize Route"</strong> to sequence client stops by location, minimising transit times between visits.
                 </p>
               </div>
             )}
@@ -1358,14 +1475,6 @@ export const Meetings: React.FC = () => {
                 >
                   <div className="flex justify-between items-start mb-3">
                     <div className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        checked={meeting.status === 'completed'}
-                        onChange={(e) => handleToggleCompleted(meeting, e.target.checked)}
-                        disabled={isSuggested}
-                        onClick={(e) => e.stopPropagation()}
-                        className="h-4.5 w-4.5 rounded border-crm-border bg-crm-bg text-primary focus:ring-primary/20 cursor-pointer accent-primary"
-                      />
                       <span className={`text-[10px] uppercase font-extrabold tracking-wider px-2 py-0.5 rounded ${
                         isSuggested 
                           ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20'
@@ -1462,7 +1571,7 @@ export const Meetings: React.FC = () => {
                                 setAiTailorOpen(true);
                               }}
                               className="p-1.5 rounded-lg text-purple-600 hover:bg-purple-500 hover:text-white border border-purple-500/25 transition cursor-pointer"
-                              title="AI Follow-up Email"
+                              title="Follow-up Email"
                             >
                               <Sparkles className="h-3.5 w-3.5" />
                             </button>
@@ -1491,12 +1600,11 @@ export const Meetings: React.FC = () => {
           </div>
 
           {/* Desktop Table View */}
-          <div className="hidden md:block bg-crm-card border border-crm-border rounded-2xl overflow-hidden shadow-sm">
-            <div className="overflow-x-auto">
+          <div className="hidden md:block bg-crm-card border border-crm-border rounded-2xl shadow-sm">
+            <div className="overflow-x-auto overflow-y-visible rounded-2xl">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-crm-border bg-crm-bg/40 text-crm-muted font-bold text-xs uppercase tracking-wider">
-                    <th className="py-4 px-6 w-16 text-center">Status</th>
                     <th className="py-4 px-6">Client / Contact</th>
                     <th className="py-4 px-6">Company</th>
                     <th className="py-4 px-6">Scheduled Time</th>
@@ -1519,15 +1627,6 @@ export const Meetings: React.FC = () => {
                             : 'hover:bg-crm-bg/40 cursor-pointer'
                         }`}
                       >
-                        <td className="py-4 px-6 text-center" onClick={(e) => e.stopPropagation()}>
-                          <input
-                            type="checkbox"
-                            checked={meeting.status === 'completed'}
-                            onChange={(e) => handleToggleCompleted(meeting, e.target.checked)}
-                            disabled={isSuggested}
-                            className="h-4.5 w-4.5 rounded border-crm-border bg-crm-bg text-primary focus:ring-primary/20 cursor-pointer accent-primary disabled:opacity-30 disabled:cursor-not-allowed"
-                          />
-                        </td>
                         <td className="py-4 px-6">
                           <div>
                             <p className={`font-semibold text-sm ${isSuggested ? 'text-purple-800 dark:text-purple-300' : 'text-crm-text'}`}>
@@ -1572,9 +1671,16 @@ export const Meetings: React.FC = () => {
                             </span>
                           ) : (
                             <div className="flex flex-col space-y-1.5 items-start">
-                              <span className="text-[10px] uppercase font-bold tracking-wider px-2.5 py-1 rounded-full border bg-amber-500/10 border-amber-500/25 text-amber-600 dark:text-amber-400">
-                                Awaiting
-                              </span>
+                              {new Date(meeting.scheduledAt).getTime() + 60 * 60 * 1000 < now ? (
+                                <span className="text-[10px] uppercase font-bold tracking-wider px-2.5 py-1 rounded-full border bg-rose-500/10 border-rose-500/25 text-rose-600 dark:text-rose-400 flex items-center space-x-1">
+                                  <AlertCircle className="h-3 w-3 shrink-0" />
+                                  <span>Overdue</span>
+                                </span>
+                              ) : (
+                                <span className="text-[10px] uppercase font-bold tracking-wider px-2.5 py-1 rounded-full border bg-amber-500/10 border-amber-500/25 text-amber-600 dark:text-amber-400">
+                                  Awaiting
+                                </span>
+                              )}
                               {ambiguousMeetings[meeting.id] && (
                                 <span className="text-[8px] font-bold px-2 py-0.5 rounded bg-rose-500/10 border border-rose-500/25 text-rose-500">
                                   Location {ambiguousMeetings[meeting.id] === 'ambiguous' ? 'Ambiguous' : 'Unresolved'}
@@ -1583,25 +1689,30 @@ export const Meetings: React.FC = () => {
                             </div>
                           )}
                         </td>
-                        <td className="py-4 px-6 relative hover:z-50">
-                          <div className="relative group cursor-pointer max-w-[200px]">
+                        <td className="py-4 px-6">
+                          <div
+                            className="cursor-pointer max-w-[200px]"
+                            onMouseEnter={(e) => {
+                              const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                              const tooltipWidth = 320;
+                              const x = Math.min(rect.left, window.innerWidth - tooltipWidth - 16);
+                              const y = rect.top;
+                              setCommentTooltip({
+                                x,
+                                y,
+                                title: isSuggested ? 'Suggested Reason' : 'Meeting Discussion Notes',
+                                body: isSuggested
+                                  ? (meeting.whyContext || 'Suggested by cadence trigger.')
+                                  : (meeting.comments || 'No comments logged yet.'),
+                              });
+                            }}
+                            onMouseLeave={() => setCommentTooltip(null)}
+                          >
                             <p className="text-xs text-crm-muted truncate">
-                              {isSuggested 
+                              {isSuggested
                                 ? (meeting.whyContext || 'Suggested by cadence trigger.')
                                 : (meeting.comments || 'No comments logged yet.')}
                             </p>
-                            <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block z-50 w-80 bg-slate-800 dark:bg-slate-900 text-slate-100 text-xs rounded-xl p-3.5 shadow-2xl border border-slate-700 dark:border-slate-800 leading-relaxed font-normal normal-case">
-                              <div className="font-bold text-primary mb-1.5 flex items-center space-x-1">
-                                <Sparkles className="h-3.5 w-3.5 text-cyan-300 shrink-0" />
-                                <span>{isSuggested ? 'AI Suggested Reason' : 'Meeting Discussion Notes'}</span>
-                              </div>
-                              <p className="text-slate-200">
-                                {isSuggested 
-                                  ? (meeting.whyContext || 'Suggested by cadence trigger.')
-                                  : (meeting.comments || 'No comments logged yet.')}
-                              </p>
-                              <div className="absolute top-full left-6 border-[6px] border-transparent border-t-slate-800 dark:border-t-slate-900"></div>
-                            </div>
                           </div>
                         </td>
                         <td className="py-4 px-6 text-right" onClick={(e) => e.stopPropagation()}>
@@ -1633,7 +1744,7 @@ export const Meetings: React.FC = () => {
                                       setAiTailorOpen(true);
                                     }}
                                     className="p-1.5 rounded-lg text-purple-600 hover:text-white bg-purple-500/10 hover:bg-purple-500 border border-purple-500/20 transition shadow-sm"
-                                    title="AI Tailor - Generate Follow-up"
+                                    title="Generate Follow-up Email"
                                   >
                                     <Sparkles className="h-4 w-4" />
                                   </button>
@@ -1664,7 +1775,7 @@ export const Meetings: React.FC = () => {
                                     setAiTailorOpen(true);
                                   }}
                                   className="p-1.5 rounded-lg text-purple-600 hover:text-white bg-purple-500/10 hover:bg-purple-500 border border-purple-500/20 transition shadow-sm"
-                                  title="AI Tailor - Generate Follow-up"
+                                  title="Generate Follow-up Email"
                                 >
                                   <Sparkles className="h-4 w-4" />
                                 </button>
@@ -1685,69 +1796,228 @@ export const Meetings: React.FC = () => {
       {/* Add/Edit schedule dialog modal */}
       {addModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-xs animate-fade-in">
-          <div className="w-full max-w-md bg-crm-card border border-crm-border rounded-3xl p-6 shadow-2xl relative text-crm-text animate-fade-in">
-            <button 
+          <div className="w-full max-w-xl bg-crm-card border border-crm-border rounded-3xl p-6 shadow-2xl relative text-crm-text animate-fade-in max-h-[95vh] overflow-y-auto">
+            <button
               onClick={() => setAddModalOpen(false)}
               className="absolute top-4 right-4 p-1.5 rounded-lg text-crm-muted hover:text-crm-text hover:bg-crm-bg transition border border-transparent hover:border-crm-border"
             >
               <X className="h-5 w-5" />
             </button>
 
-            <h3 className="text-xl font-bold text-crm-text mb-2">Schedule Meeting</h3>
-            <p className="text-xs text-crm-muted mb-6">Assign a client or prospect to meet for {getReadableMonth(selectedMonth)}</p>
+            <h3 className="text-xl font-bold text-crm-text mb-1">Schedule Meeting</h3>
+            <p className="text-xs text-crm-muted mb-5">Assign a client or prospect to meet for {getReadableMonth(selectedMonth)}</p>
 
             {addError && (
               <div className="mb-4 px-4 py-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-500 text-xs flex items-center space-x-2">
-                <AlertCircle className="h-4 w-4 text-rose-550 shrink-0 animate-bounce" />
+                <AlertCircle className="h-4 w-4 shrink-0" />
                 <span>{addError}</span>
               </div>
             )}
 
-            <form onSubmit={handleScheduleMeeting} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-crm-muted uppercase tracking-wider mb-2">Select Contact *</label>
-                <select
-                  value={selectedContactId}
-                  onChange={(e) => setSelectedContactId(e.target.value)}
-                  className="w-full bg-crm-bg border border-crm-border focus:border-primary rounded-xl px-4 py-2.5 text-sm text-crm-text outline-none transition cursor-pointer"
-                  required
-                >
-                  <option value="" disabled>-- Select Contact --</option>
-                  {contacts.map(c => (
-                    <option key={c.id} value={c.id}>
-                      {c.name} ({c.companyName} &bull; Tier {c.tier})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-crm-muted uppercase tracking-wider mb-2">Meeting Date & Time *</label>
-                <input
-                  type="datetime-local"
-                  value={scheduledAtTime}
-                  onChange={(e) => setScheduledAtTime(e.target.value)}
-                  className="w-full bg-crm-bg border border-crm-border focus:border-primary rounded-xl px-4 py-2.5 text-sm text-crm-text outline-none transition cursor-pointer"
-                  required
-                />
-              </div>
-
-              <div className="flex space-x-3 mt-6">
+            {justScheduled ? (
+              <div className="space-y-5">
+                <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-2xl p-4 flex items-start space-x-3">
+                  <Check className="h-5 w-5 text-emerald-500 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-bold text-crm-text">Meeting scheduled</p>
+                    <p className="text-xs text-crm-muted mt-0.5">
+                      {justScheduled.contactName} &bull; {new Date(justScheduled.scheduledAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+                    </p>
+                  </div>
+                </div>
+                <p className="text-xs font-semibold text-crm-muted uppercase tracking-wider">Add to your calendar</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <a
+                    href={buildGoogleCalendarUrl(justScheduled.contactName, justScheduled.companyName, justScheduled.scheduledAt)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center space-x-2 bg-crm-bg border border-crm-border hover:border-primary hover:text-primary text-crm-text font-bold py-2.5 rounded-xl text-sm transition"
+                  >
+                    <Calendar className="h-4 w-4" />
+                    <span>Google Calendar</span>
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => downloadICS(justScheduled.contactName, justScheduled.companyName, justScheduled.scheduledAt)}
+                    className="flex items-center justify-center space-x-2 bg-crm-bg border border-crm-border hover:border-primary hover:text-primary text-crm-text font-bold py-2.5 rounded-xl text-sm transition"
+                  >
+                    <Calendar className="h-4 w-4" />
+                    <span>Download ICS</span>
+                  </button>
+                </div>
                 <button
                   type="button"
-                  onClick={() => setAddModalOpen(false)}
-                  className="flex-1 bg-crm-bg hover:bg-crm-border text-crm-muted font-bold py-2.5 rounded-xl text-sm border border-crm-border transition shadow-sm"
+                  onClick={() => { setJustScheduled(null); setAddModalOpen(false); }}
+                  className="w-full bg-primary hover:bg-primary-hover text-white font-bold py-2.5 rounded-xl text-sm transition shadow-lg shadow-primary/10"
                 >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 bg-primary hover:bg-primary-hover text-white font-bold py-2.5 rounded-xl text-sm transition shadow-lg shadow-primary/10"
-                >
-                  Schedule
+                  Done
                 </button>
               </div>
+            ) : (
+            <form onSubmit={handleScheduleMeeting}>
+              <div className="flex gap-6">
+
+                {/* Left column: who */}
+                <div className="flex flex-col gap-4 w-48 shrink-0">
+                  <div>
+                    <label className="block text-xs font-semibold text-crm-muted uppercase tracking-wider mb-2">Company</label>
+                    <select
+                      value={schedCompanyFilter}
+                      onChange={(e) => { setSchedCompanyFilter(e.target.value); setSelectedContactId(''); }}
+                      className="w-full bg-crm-bg border border-crm-border focus:border-primary rounded-xl px-3 py-2 text-sm text-crm-text outline-none transition cursor-pointer"
+                    >
+                      <option value="ALL">All Companies</option>
+                      {[...new Set(contacts.map(c => c.companyName))].sort().map(co => (
+                        <option key={co} value={co}>{co}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-crm-muted uppercase tracking-wider mb-2">Contact *</label>
+                    <select
+                      value={selectedContactId}
+                      onChange={(e) => setSelectedContactId(e.target.value)}
+                      className="w-full bg-crm-bg border border-crm-border focus:border-primary rounded-xl px-3 py-2 text-sm text-crm-text outline-none transition cursor-pointer"
+                      required
+                    >
+                      <option value="" disabled>-- Select --</option>
+                      {(schedCompanyFilter === 'ALL' ? contacts : contacts.filter(c => c.companyName === schedCompanyFilter)).map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Summary */}
+                  {selectedContactId && pickedDate && (
+                    <div className="mt-auto bg-primary/5 border border-primary/20 rounded-xl p-3 text-xs text-crm-text space-y-1">
+                      {(() => { const c = contacts.find(x => x.id === selectedContactId); return c ? <p className="font-bold">{c.name}</p> : null; })()}
+                      <p className="text-crm-muted">{new Date(pickedDate + 'T' + pickedTime).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</p>
+                    </div>
+                  )}
+
+                  <div className="flex flex-col gap-2 mt-auto pt-2">
+                    <button
+                      type="submit"
+                      disabled={!selectedContactId || !pickedDate}
+                      className="w-full bg-primary hover:bg-primary-hover disabled:opacity-40 text-white font-bold py-2.5 rounded-xl text-sm transition shadow-lg shadow-primary/10"
+                    >
+                      Schedule
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAddModalOpen(false)}
+                      className="w-full bg-crm-bg hover:bg-crm-border text-crm-muted font-bold py-2 rounded-xl text-sm border border-crm-border transition"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+
+                {/* Right column: when */}
+                <div className="flex-1 min-w-0 flex flex-col gap-4">
+
+                  {/* Calendar */}
+                  {(() => {
+                    const yr = pickerViewDate.getFullYear();
+                    const mo = pickerViewDate.getMonth();
+                    const firstDow = new Date(yr, mo, 1).getDay();
+                    const daysInMo = new Date(yr, mo + 1, 0).getDate();
+                    const todayD = new Date();
+                    const todayStr = `${todayD.getFullYear()}-${String(todayD.getMonth()+1).padStart(2,'0')}-${String(todayD.getDate()).padStart(2,'0')}`;
+                    const cells: (number | null)[] = [
+                      ...Array(firstDow).fill(null),
+                      ...Array.from({ length: daysInMo }, (_, i) => i + 1)
+                    ];
+                    return (
+                      <div className="bg-crm-bg border border-crm-border rounded-2xl p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <button type="button" onClick={() => setPickerViewDate(new Date(yr, mo - 1, 1))} className="p-1 rounded-lg hover:bg-crm-border text-crm-muted hover:text-crm-text transition">
+                            <ChevronLeft className="h-4 w-4" />
+                          </button>
+                          <span className="text-sm font-bold text-crm-text">
+                            {pickerViewDate.toLocaleString('default', { month: 'long', year: 'numeric' })}
+                          </span>
+                          <button type="button" onClick={() => setPickerViewDate(new Date(yr, mo + 1, 1))} className="p-1 rounded-lg hover:bg-crm-border text-crm-muted hover:text-crm-text transition">
+                            <ChevronRight className="h-4 w-4" />
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-7 mb-1">
+                          {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => (
+                            <div key={d} className="text-center text-[9px] font-extrabold text-crm-muted uppercase py-0.5">{d}</div>
+                          ))}
+                        </div>
+                        <div className="grid grid-cols-7 gap-0.5">
+                          {cells.map((day, i) => {
+                            if (!day) return <div key={`e-${i}`} />;
+                            const dateStr = `${yr}-${String(mo+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+                            const isSelected = pickedDate === dateStr;
+                            const isToday = todayStr === dateStr;
+                            const isPast = new Date(yr, mo, day) < new Date(todayD.getFullYear(), todayD.getMonth(), todayD.getDate());
+                            return (
+                              <button
+                                type="button"
+                                key={dateStr}
+                                disabled={isPast}
+                                onClick={() => { setPickedDate(dateStr); setScheduledAtTime(dateStr + 'T' + pickedTime); }}
+                                className={`h-7 w-full rounded-lg text-xs font-semibold transition ${
+                                  isSelected ? 'bg-primary text-white shadow-sm shadow-primary/30'
+                                  : isToday ? 'ring-1 ring-primary text-primary font-extrabold'
+                                  : isPast ? 'text-crm-muted/30 cursor-not-allowed'
+                                  : 'hover:bg-primary/10 text-crm-text'
+                                }`}
+                              >{day}</button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Time */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-xs font-semibold text-crm-muted uppercase tracking-wider">Time *</label>
+                      <input
+                        type="time"
+                        value={pickedTime}
+                        onChange={(e) => {
+                          setPickedTime(e.target.value);
+                          if (pickedDate) setScheduledAtTime(pickedDate + 'T' + e.target.value);
+                        }}
+                        className="bg-crm-bg border border-crm-border focus:border-primary rounded-lg px-2 py-1 text-xs text-crm-text outline-none transition"
+                      />
+                    </div>
+                    <div className="grid grid-cols-4 gap-1">
+                      {Array.from({ length: 20 }, (_, i) => {
+                        const totalMins = 8 * 60 + i * 30;
+                        const hour24 = Math.floor(totalMins / 60);
+                        const min = totalMins % 60;
+                        const time24 = `${String(hour24).padStart(2,'0')}:${String(min).padStart(2,'0')}`;
+                        const hour12 = hour24 > 12 ? hour24 - 12 : hour24;
+                        const ampm = hour24 >= 12 ? 'PM' : 'AM';
+                        const isSelected = pickedTime === time24;
+                        return (
+                          <button
+                            type="button"
+                            key={time24}
+                            onClick={() => { setPickedTime(time24); if (pickedDate) setScheduledAtTime(pickedDate + 'T' + time24); }}
+                            className={`py-1.5 rounded-lg text-[10px] font-semibold border transition ${
+                              isSelected
+                                ? 'bg-primary text-white border-primary'
+                                : 'bg-crm-bg border-crm-border text-crm-muted hover:border-primary hover:text-primary'
+                            }`}
+                          >
+                            {hour12}:{String(min).padStart(2,'0')} {ampm}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                </div>
+              </div>
             </form>
+            )}
           </div>
         </div>
       )}
@@ -1887,7 +2157,7 @@ export const Meetings: React.FC = () => {
                           className="w-full flex items-center justify-center space-x-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl py-2.5 font-semibold text-xs transition shadow-sm"
                         >
                           <Sparkles className="h-3.5 w-3.5" />
-                          <span>Draft Follow-up (AI Tailor)</span>
+                          <span>Draft Follow-up Email</span>
                         </button>
                       )}
                       {canManageMeetings && (
@@ -1926,17 +2196,18 @@ export const Meetings: React.FC = () => {
                         </div>
                       ) : (
                         feed.map((item) => (
-                          <div key={item.id} className="bg-crm-bg border border-crm-border p-3.5 rounded-2xl space-y-2 text-xs relative shadow-xs">
-                            <div className="flex justify-between items-center text-[10px] text-crm-muted font-semibold">
-                              <span>By {item.author}</span>
-                              <span>{new Date(item.date).toLocaleDateString()}</span>
+                          <div key={item.id} className="bg-crm-bg border border-crm-border p-3.5 rounded-2xl space-y-2 text-xs shadow-xs">
+                            <div className="flex justify-between items-center">
+                              <span className="text-[10px] text-crm-muted font-semibold">
+                                By {item.author} · {new Date(item.date).toLocaleDateString()}
+                              </span>
+                              <span className={`text-[8px] font-bold uppercase px-1.5 py-0.5 rounded shrink-0 ${
+                                item.type === 'meeting' ? 'bg-primary/10 text-primary' : 'bg-slate-200 text-slate-500'
+                              }`}>
+                                {item.type}
+                              </span>
                             </div>
                             <p className="text-crm-text font-medium leading-relaxed whitespace-pre-wrap">{item.content}</p>
-                            <span className={`absolute top-2 right-2 text-[8px] font-bold uppercase px-1.5 py-0.5 rounded ${
-                              item.type === 'meeting' ? 'bg-primary/10 text-primary' : 'bg-slate-200 text-slate-500'
-                            }`}>
-                              {item.type}
-                            </span>
                           </div>
                         ))
                       )}
@@ -1950,7 +2221,80 @@ export const Meetings: React.FC = () => {
         </>
       )}
 
-      {/* AI Tailor Modal (Email Assist) */}
+      {/* At-Risk Clients Modal */}
+      {atRiskModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-sm">
+          <div className="w-full max-w-lg bg-crm-card border border-crm-border rounded-3xl shadow-2xl relative text-crm-text animate-fade-in flex flex-col max-h-[80vh]">
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b border-crm-border shrink-0">
+              <div className="flex items-center space-x-3">
+                <div className="p-2 rounded-xl bg-rose-500/10 border border-rose-500/20">
+                  <AlertCircle className="h-5 w-5 text-rose-500" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-crm-text">Clients at Risk</h3>
+                  <p className="text-xs text-crm-muted mt-0.5">Cadence threshold exceeded — no meeting scheduled this month</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setAtRiskModalOpen(false)}
+                className="p-1.5 rounded-lg text-crm-muted hover:text-crm-text hover:bg-crm-bg border border-transparent hover:border-crm-border transition"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* List */}
+            <div className="overflow-y-auto flex-1 p-4 space-y-3">
+              {coverageGapsContacts.map(contact => {
+                const contactCompleted = meetings.filter(m => m.contactId === contact.id && m.status === 'completed');
+                let lastMeet: Date;
+                if (contactCompleted.length > 0) {
+                  const sorted = [...contactCompleted].sort((a, b) => new Date(b.completedAt || b.scheduledAt).getTime() - new Date(a.completedAt || a.scheduledAt).getTime());
+                  lastMeet = new Date(sorted[0].completedAt || sorted[0].scheduledAt);
+                } else {
+                  const offsetDays = contact.tier === 'A' ? 35 : contact.tier === 'B' ? 65 : 95;
+                  lastMeet = new Date(now - 1000 * 60 * 60 * 24 * offsetDays);
+                }
+                const daysSince = Math.max(0, Math.floor((now - lastMeet.getTime()) / (1000 * 60 * 60 * 24)));
+                const threshold = thresholds[contact.tier];
+                const daysOverdue = daysSince - threshold;
+
+                return (
+                  <div key={contact.id} className="flex items-center justify-between bg-crm-bg border border-crm-border rounded-2xl p-4">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center space-x-2 mb-1">
+                        <p className="font-bold text-sm text-crm-text truncate">{contact.name}</p>
+                        <span className={`text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded border shrink-0 ${
+                          contact.tier === 'A' ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-600 dark:text-emerald-400'
+                          : contact.tier === 'B' ? 'bg-amber-500/10 border-amber-500/25 text-amber-600 dark:text-amber-400'
+                          : 'bg-slate-500/10 border-slate-500/25 text-crm-muted'
+                        }`}>Tier {contact.tier}</span>
+                      </div>
+                      <p className="text-xs text-crm-muted truncate">{contact.companyName}</p>
+                      <p className="text-xs text-rose-500 font-semibold mt-1">
+                        {daysSince} days since last touchpoint — {daysOverdue} days overdue
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setAtRiskModalOpen(false);
+                        openScheduleModal(contact.id);
+                      }}
+                      className="ml-4 shrink-0 flex items-center space-x-1.5 bg-primary hover:bg-primary-hover text-white px-3 py-2 rounded-xl text-xs font-bold transition shadow-sm shadow-primary/10"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      <span>Schedule</span>
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Email Draft Modal */}
       {aiTailorOpen && aiTailorMeeting && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-xs animate-fade-in">
           <div className="w-full max-w-xl bg-crm-card border border-crm-border rounded-3xl p-6 shadow-2xl relative text-crm-text animate-fade-in">
@@ -1966,7 +2310,7 @@ export const Meetings: React.FC = () => {
 
             <h3 className="text-xl font-bold text-crm-text flex items-center space-x-2 mb-2">
               <Sparkles className="h-5 w-5 text-purple-600" />
-              <span>AI Email Assist (AI Tailor)</span>
+              <span>Email Draft Assistant</span>
             </h3>
             <p className="text-xs text-crm-muted mb-5">Draft a context-aware follow-up email dynamically tailored to discussion notes.</p>
 
@@ -2063,10 +2407,7 @@ export const Meetings: React.FC = () => {
                 type="button"
                 onClick={() => {
                   setFollowUpPromptOpen(false);
-                  setSelectedContactId(promptContactId);
-                  setScheduledAtTime('');
-                  setAddError(null);
-                  setAddModalOpen(true);
+                  openScheduleModal(promptContactId);
                   setPromptContactId('');
                   setPromptContactName('');
                 }}
@@ -2146,5 +2487,6 @@ export const Meetings: React.FC = () => {
       )}
 
     </div>
+    </>
   );
 };

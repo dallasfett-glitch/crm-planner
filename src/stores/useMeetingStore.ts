@@ -15,7 +15,7 @@ export interface Meeting {
   status: 'suggested' | 'pending' | 'completed';
   outcome: string;
   comments: string;
-  whyContext?: string; // AI generated context explaining the suggestions
+  whyContext?: string; // Cadence suggestion context
   scheduledAt: string;
   completedAt: string | null;
   createdAt: string;
@@ -226,7 +226,7 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
         });
         set({ meetings: meetingList, loading: false, initialized: true });
         
-        // Run AI suggestions check
+        // Run cadence suggestions check
         get().runPredictiveSuggestions();
       }, (err) => {
         console.error('Error listening to meetings:', err);
@@ -244,7 +244,7 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
           set({ meetings: seed, loading: false, initialized: true });
         }
         
-        // Run AI suggestions check
+        // Run cadence suggestions check
         get().runPredictiveSuggestions();
       };
 
