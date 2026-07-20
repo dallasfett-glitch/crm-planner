@@ -114,7 +114,7 @@ export const Dashboard: React.FC = () => {
             Welcome back, <span className="bg-gradient-to-r from-primary to-cyan-500 bg-clip-text text-transparent">{user?.displayName}</span>
           </h1>
           <p className="text-crm-muted text-sm mt-1 font-medium">
-            Here is your Northstar sales performance summary for <strong className="text-crm-text font-bold">{currentMonthReadable}</strong>.
+            Here is your CRM Planner sales performance summary for <strong className="text-crm-text font-bold">{currentMonthReadable}</strong>.
           </p>
         </div>
         <button

@@ -21,7 +21,7 @@ interface NoteState {
   deleteNote: (id: string) => Promise<void>;
 }
 
-const STORAGE_KEY = 'northstar_notes';
+const STORAGE_KEY = 'crm_notes';
 const SEED_NOTES: Note[] = [
   {
     id: 'note-1',

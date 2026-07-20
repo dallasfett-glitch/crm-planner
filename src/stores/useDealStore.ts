@@ -29,7 +29,7 @@ interface DealState {
   deleteDeal: (id: string) => Promise<void>;
 }
 
-const STORAGE_KEY = 'northstar_deals';
+const STORAGE_KEY = 'crm_deals';
 const SEED_DEALS: Deal[] = [
   {
     id: 'deal-1',

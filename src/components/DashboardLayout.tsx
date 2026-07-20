@@ -36,22 +36,22 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
 
   // Theme state
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-    return (localStorage.getItem('northstar_theme') as 'light' | 'dark') || 'light';
+    return (localStorage.getItem('crm_theme') as 'light' | 'dark') || 'light';
   });
 
   // Custom Logo Reactive States
-  const [logoLight, setLogoLight] = useState(() => localStorage.getItem('northstar_logo_light') || '/logo.png');
-  const [logoDark, setLogoDark] = useState(() => localStorage.getItem('northstar_logo_dark') || '/logo.png');
-  const [logoIcon, setLogoIcon] = useState(() => localStorage.getItem('northstar_logo_icon') || '');
+  const [logoLight, setLogoLight] = useState(() => localStorage.getItem('crm_logo_light') || '/logo.png');
+  const [logoDark, setLogoDark] = useState(() => localStorage.getItem('crm_logo_dark') || '/logo.png');
+  const [logoIcon, setLogoIcon] = useState(() => localStorage.getItem('CRM Planner_logo_icon') || '');
 
   useEffect(() => {
     const handleLogoUpdate = () => {
-      setLogoLight(localStorage.getItem('northstar_logo_light') || '/logo.png');
-      setLogoDark(localStorage.getItem('northstar_logo_dark') || '/logo.png');
-      setLogoIcon(localStorage.getItem('northstar_logo_icon') || '');
+      setLogoLight(localStorage.getItem('crm_logo_light') || '/logo.png');
+      setLogoDark(localStorage.getItem('crm_logo_dark') || '/logo.png');
+      setLogoIcon(localStorage.getItem('CRM Planner_logo_icon') || '');
     };
-    window.addEventListener('northstar-logo-updated', handleLogoUpdate);
-    return () => window.removeEventListener('northstar-logo-updated', handleLogoUpdate);
+    window.addEventListener('crm-logo-updated', handleLogoUpdate);
+    return () => window.removeEventListener('crm-logo-updated', handleLogoUpdate);
   }, []);
 
   // Apply theme class to document element
@@ -62,7 +62,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
     } else {
       root.classList.remove('dark');
     }
-    localStorage.setItem('northstar_theme', theme);
+    localStorage.setItem('crm_theme', theme);
   }, [theme]);
 
   const toggleTheme = () => {

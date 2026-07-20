@@ -28,7 +28,7 @@ export const db = app ? getFirestore(app) : null;
 
 if (!isFirebaseConfigured) {
   console.warn(
-    'Firebase environment variables are missing. Northstar CRM will run in Local Storage Mock Mode for demo/testing purposes. ' +
+    'Firebase environment variables are missing. CRM Planner will run in Local Storage Mock Mode for demo/testing purposes. ' +
     'Please add VITE_FIREBASE_API_KEY, VITE_FIREBASE_PROJECT_ID, and VITE_FIREBASE_AUTH_DOMAIN to your .env file to connect to real Firebase.'
   );
 }

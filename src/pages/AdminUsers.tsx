@@ -394,7 +394,7 @@ export const AdminUsers: React.FC = () => {
                     </div>
                     <input
                       type="email"
-                      placeholder="e.g. alice@northstar.com"
+                      placeholder="e.g. alice@crmplanner.com"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       className="w-full bg-crm-bg border border-crm-border focus:border-primary rounded-xl pl-9 pr-4 py-2.5 text-sm text-crm-text placeholder-crm-muted outline-none transition"

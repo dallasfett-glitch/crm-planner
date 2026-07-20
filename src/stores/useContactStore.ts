@@ -35,7 +35,7 @@ interface ContactState {
   deleteContact: (id: string) => Promise<void>;
 }
 
-const STORAGE_KEY = 'northstar_contacts';
+const STORAGE_KEY = 'crm_contacts';
 const SEED_CONTACTS: Contact[] = [
   {
     id: 'cont-1',

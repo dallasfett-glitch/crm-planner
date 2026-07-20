@@ -38,8 +38,8 @@ interface MeetingState {
   generateNext3MonthsSchedule: () => Promise<void>;
 }
 
-const STORAGE_KEY = 'northstar_meetings';
-const CADENCE_KEY = 'northstar_cadence_settings';
+const STORAGE_KEY = 'crm_meetings';
+const CADENCE_KEY = 'crm_cadence_settings';
 
 // Default Cadence values
 export const DEFAULT_CADENCES = { A: 30, B: 60, C: 90 };

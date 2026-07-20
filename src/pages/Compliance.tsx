@@ -70,10 +70,10 @@ export const Compliance: React.FC = () => {
     
     // Add default mock users if not present in store
     if (!list.some(u => u.uid === 'admin-uid')) {
-      list.push({ uid: 'admin-uid', email: 'admin@northstar.com', displayName: 'Admin User', role: 'admin' });
+      list.push({ uid: 'admin-uid', email: 'admin@crmplanner.com', displayName: 'Admin User', role: 'admin' });
     }
     if (!list.some(u => u.uid === 'sales-uid')) {
-      list.push({ uid: 'sales-uid', email: 'sales@northstar.com', displayName: 'John Salesperson', role: 'salesperson' });
+      list.push({ uid: 'sales-uid', email: 'sales@crmplanner.com', displayName: 'John Salesperson', role: 'salesperson' });
     }
 
     // Filter to only those with salesperson or admin roles who have logged meetings or exist in profile database

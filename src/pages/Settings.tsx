@@ -23,7 +23,7 @@ interface CustomOutcome {
 }
 import { useNavigate } from 'react-router-dom';
 
-const CADENCE_KEY = 'northstar_cadence_settings';
+const CADENCE_KEY = 'crm_cadence_settings';
 
 const generateOutcomeId = (): string => `outcome-${Date.now()}`;
 
@@ -71,16 +71,16 @@ export const Settings: React.FC = () => {
   });
 
   // Logo states (Base64 data URLs)
-  const [logoLight, setLogoLight] = useState<string | null>(() => localStorage.getItem('northstar_logo_light'));
-  const [logoDark, setLogoDark] = useState<string | null>(() => localStorage.getItem('northstar_logo_dark'));
-  const [logoIcon, setLogoIcon] = useState<string | null>(() => localStorage.getItem('northstar_logo_icon'));
+  const [logoLight, setLogoLight] = useState<string | null>(() => localStorage.getItem('crm_logo_light'));
+  const [logoDark, setLogoDark] = useState<string | null>(() => localStorage.getItem('crm_logo_dark'));
+  const [logoIcon, setLogoIcon] = useState<string | null>(() => localStorage.getItem('CRM Planner_logo_icon'));
 
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Customizable outcomes states
   const [outcomes, setOutcomes] = useState<CustomOutcome[]>(() => {
-    const storedOutcomes = localStorage.getItem('northstar_meeting_outcomes');
+    const storedOutcomes = localStorage.getItem('crm_meeting_outcomes');
     if (storedOutcomes) {
       try {
         return JSON.parse(storedOutcomes);
@@ -94,7 +94,7 @@ export const Settings: React.FC = () => {
       { id: 'follow-up', label: 'Follow-up Required', workflow: 'follow-up' },
       { id: 'not-interested', label: 'Not Interested', workflow: 'not-interested' }
     ];
-    localStorage.setItem('northstar_meeting_outcomes', JSON.stringify(defaults));
+    localStorage.setItem('crm_meeting_outcomes', JSON.stringify(defaults));
     return defaults;
   });
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -183,17 +183,17 @@ export const Settings: React.FC = () => {
     reader.onload = () => {
       const base64 = reader.result as string;
       if (format === 'light') {
-        localStorage.setItem('northstar_logo_light', base64);
+        localStorage.setItem('crm_logo_light', base64);
         setLogoLight(base64);
       } else if (format === 'dark') {
-        localStorage.setItem('northstar_logo_dark', base64);
+        localStorage.setItem('crm_logo_dark', base64);
         setLogoDark(base64);
       } else if (format === 'icon') {
-        localStorage.setItem('northstar_logo_icon', base64);
+        localStorage.setItem('CRM Planner_logo_icon', base64);
         setLogoIcon(base64);
       }
       // Dispatch reactive update event
-      window.dispatchEvent(new CustomEvent('northstar-logo-updated'));
+      window.dispatchEvent(new CustomEvent('crm-logo-updated'));
     };
     reader.onerror = () => {
       alert('Error reading image file.');
@@ -204,17 +204,17 @@ export const Settings: React.FC = () => {
   // Helper: Reset Logo to Default
   const handleResetLogo = (format: 'light' | 'dark' | 'icon') => {
     if (format === 'light') {
-      localStorage.removeItem('northstar_logo_light');
+      localStorage.removeItem('crm_logo_light');
       setLogoLight(null);
     } else if (format === 'dark') {
-      localStorage.removeItem('northstar_logo_dark');
+      localStorage.removeItem('crm_logo_dark');
       setLogoDark(null);
     } else if (format === 'icon') {
-      localStorage.removeItem('northstar_logo_icon');
+      localStorage.removeItem('CRM Planner_logo_icon');
       setLogoIcon(null);
     }
     // Dispatch reactive update event
-    window.dispatchEvent(new CustomEvent('northstar-logo-updated'));
+    window.dispatchEvent(new CustomEvent('crm-logo-updated'));
   };
 
   // Customizable outcomes handlers
@@ -264,9 +264,9 @@ export const Settings: React.FC = () => {
           return o;
         });
 
-        localStorage.setItem('northstar_meeting_outcomes', JSON.stringify(updated));
+        localStorage.setItem('crm_meeting_outcomes', JSON.stringify(updated));
         setOutcomes(updated);
-        window.dispatchEvent(new CustomEvent('northstar-outcomes-updated'));
+        window.dispatchEvent(new CustomEvent('crm-outcomes-updated'));
         setOutcomesSuccess(`Outcome "${trimmedLabel}" updated successfully!`);
         resetOutcomeForm();
       };
@@ -294,9 +294,9 @@ export const Settings: React.FC = () => {
       };
 
       const updated = [...outcomes, newOutcome];
-      localStorage.setItem('northstar_meeting_outcomes', JSON.stringify(updated));
+      localStorage.setItem('crm_meeting_outcomes', JSON.stringify(updated));
       setOutcomes(updated);
-      window.dispatchEvent(new CustomEvent('northstar-outcomes-updated'));
+      window.dispatchEvent(new CustomEvent('crm-outcomes-updated'));
       setOutcomesSuccess(`Outcome "${trimmedLabel}" added successfully!`);
       resetOutcomeForm();
     }
@@ -316,9 +316,9 @@ export const Settings: React.FC = () => {
 
     if (confirm(`Are you sure you want to delete outcome "${outcomeToDelete.label}"?`)) {
       const updated = outcomes.filter(o => o.id !== id);
-      localStorage.setItem('northstar_meeting_outcomes', JSON.stringify(updated));
+      localStorage.setItem('crm_meeting_outcomes', JSON.stringify(updated));
       setOutcomes(updated);
-      window.dispatchEvent(new CustomEvent('northstar-outcomes-updated'));
+      window.dispatchEvent(new CustomEvent('crm-outcomes-updated'));
       setOutcomesSuccess(`Outcome "${outcomeToDelete.label}" deleted successfully.`);
       if (editingId === id) {
         resetOutcomeForm();

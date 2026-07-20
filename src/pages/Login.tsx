@@ -9,9 +9,9 @@ export const Login: React.FC = () => {
   const [isSignUp, setIsSignUp] = useState(false);
 
   // Logo States
-  const [logoLight] = useState(() => localStorage.getItem('northstar_logo_light') || '/logo.png');
-  const [logoDark] = useState(() => localStorage.getItem('northstar_logo_dark') || '/logo.png');
-  const [theme] = useState<'light' | 'dark'>(() => (localStorage.getItem('northstar_theme') as 'light' | 'dark') || 'light');
+  const [logoLight] = useState(() => localStorage.getItem('crm_logo_light') || '/logo.png');
+  const [logoDark] = useState(() => localStorage.getItem('crm_logo_dark') || '/logo.png');
+  const [theme] = useState<'light' | 'dark'>(() => (localStorage.getItem('crm_theme') as 'light' | 'dark') || 'light');
   
   // Fields
   const [email, setEmail] = useState('');
@@ -109,7 +109,7 @@ export const Login: React.FC = () => {
               </div>
               <input
                 type="email"
-                placeholder="salesperson@northstar.com"
+                placeholder="salesperson@crmplanner.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full bg-crm-bg border border-crm-border focus:border-primary rounded-xl pl-10 pr-4 py-3 text-sm text-crm-text placeholder-crm-muted/50 outline-none transition"
@@ -213,11 +213,11 @@ export const Login: React.FC = () => {
             <ul className="space-y-1.5 text-xs text-crm-muted">
               <li className="flex justify-between">
                 <span>Salesperson:</span>
-                <strong className="text-crm-text">sales@northstar.com</strong>
+                <strong className="text-crm-text">sales@crmplanner.com</strong>
               </li>
               <li className="flex justify-between">
                 <span>Administrator:</span>
-                <strong className="text-crm-text">admin@northstar.com</strong>
+                <strong className="text-crm-text">admin@crmplanner.com</strong>
               </li>
               <li className="text-crm-muted italic text-[10px] mt-1 text-center font-medium">
                 * Type any password to sign in.

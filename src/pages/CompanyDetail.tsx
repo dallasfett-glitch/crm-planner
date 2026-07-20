@@ -49,7 +49,7 @@ export const CompanyDetail: React.FC = () => {
   const [logType, setLogType] = useState<'note' | 'meeting'>('note');
   const [selectedContactId, setSelectedContactId] = useState('');
   const [customOutcomes, setCustomOutcomes] = useState<{ id: string; label: string; workflow: string }[]>(() => {
-    const stored = localStorage.getItem('northstar_meeting_outcomes');
+    const stored = localStorage.getItem('crm_meeting_outcomes');
     if (stored) {
       try {
         return JSON.parse(stored);
@@ -63,12 +63,12 @@ export const CompanyDetail: React.FC = () => {
       { id: 'follow-up', label: 'Follow-up Required', workflow: 'follow-up' },
       { id: 'not-interested', label: 'Not Interested', workflow: 'not-interested' }
     ];
-    localStorage.setItem('northstar_meeting_outcomes', JSON.stringify(defaults));
+    localStorage.setItem('crm_meeting_outcomes', JSON.stringify(defaults));
     return defaults;
   });
 
   const [meetingOutcome, setMeetingOutcome] = useState<string>(() => {
-    const stored = localStorage.getItem('northstar_meeting_outcomes');
+    const stored = localStorage.getItem('crm_meeting_outcomes');
     if (stored) {
       try {
         const parsed = JSON.parse(stored);
@@ -82,7 +82,7 @@ export const CompanyDetail: React.FC = () => {
 
   useEffect(() => {
     const loadOutcomes = () => {
-      const stored = localStorage.getItem('northstar_meeting_outcomes');
+      const stored = localStorage.getItem('crm_meeting_outcomes');
       if (stored) {
         try {
           const parsed = JSON.parse(stored) as { id: string; label: string; workflow: string }[];
@@ -98,8 +98,8 @@ export const CompanyDetail: React.FC = () => {
         }
       }
     };
-    window.addEventListener('northstar-outcomes-updated', loadOutcomes);
-    return () => window.removeEventListener('northstar-outcomes-updated', loadOutcomes);
+    window.addEventListener('crm-outcomes-updated', loadOutcomes);
+    return () => window.removeEventListener('crm-outcomes-updated', loadOutcomes);
   }, []);
 
   useEffect(() => {

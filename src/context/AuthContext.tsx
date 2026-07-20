@@ -36,20 +36,20 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // Default mock users for testing when Firebase is not configured
-const MOCK_USERS_KEY = 'northstar_mock_users';
-const CURRENT_MOCK_USER_KEY = 'northstar_current_mock_user';
+const MOCK_USERS_KEY = 'crm_mock_users';
+const CURRENT_MOCK_USER_KEY = 'crm_current_mock_user';
 
 const defaultMockUsers: UserProfile[] = [
   {
     uid: 'admin-uid',
-    email: 'admin@northstar.com',
+    email: 'admin@crmplanner.com',
     displayName: 'Admin User',
     role: 'admin',
     monthly_meeting_quota: 20,
   },
   {
     uid: 'sales-uid',
-    email: 'sales@northstar.com',
+    email: 'sales@crmplanner.com',
     displayName: 'John Salesperson',
     role: 'salesperson',
     monthly_meeting_quota: 20,
@@ -144,11 +144,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
 
       window.addEventListener('storage', handleStorageChange);
-      window.addEventListener('northstar-user-updated', handleCustomUpdate);
+      window.addEventListener('crm-user-updated', handleCustomUpdate);
 
       return () => {
         window.removeEventListener('storage', handleStorageChange);
-        window.removeEventListener('northstar-user-updated', handleCustomUpdate);
+        window.removeEventListener('crm-user-updated', handleCustomUpdate);
       };
     }
   }, []);
@@ -166,7 +166,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStorage.setItem(CURRENT_MOCK_USER_KEY, JSON.stringify(foundUser));
         setUser(foundUser);
       } else {
-        throw new Error('User not found. Try admin@northstar.com or sales@northstar.com (any password).');
+        throw new Error('User not found. Try admin@crmplanner.com or sales@crmplanner.com (any password).');
       }
     }
   };

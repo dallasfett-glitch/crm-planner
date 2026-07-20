@@ -32,7 +32,7 @@ interface CompanyState {
   deleteCompany: (id: string) => Promise<void>;
 }
 
-const STORAGE_KEY = 'northstar_companies';
+const STORAGE_KEY = 'CRM Planner_companies';
 const SEED_COMPANIES: Company[] = [
   {
     id: 'comp-1',

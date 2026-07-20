@@ -105,7 +105,7 @@ export const Meetings: React.FC = () => {
     const params = new URLSearchParams({
       text: `Meeting with ${contactName} (${companyName})`,
       dates: `${fmt(start)}/${fmt(end)}`,
-      details: 'Scheduled via Northstar CRM',
+      details: 'Scheduled via CRM Planner',
     });
     return `https://calendar.google.com/calendar/r/eventedit?${params.toString()}`;
   };
@@ -117,13 +117,13 @@ export const Meetings: React.FC = () => {
     const ics = [
       'BEGIN:VCALENDAR',
       'VERSION:2.0',
-      'PRODID:-//Northstar CRM//EN',
+      'PRODID:-//CRM Planner//EN',
       'BEGIN:VEVENT',
       `DTSTART:${fmt(start)}`,
       `DTEND:${fmt(end)}`,
       `SUMMARY:Meeting with ${contactName} (${companyName})`,
-      'DESCRIPTION:Scheduled via Northstar CRM',
-      `UID:${Date.now()}@northstar-crm`,
+      'DESCRIPTION:Scheduled via CRM Planner',
+      `UID:${Date.now()}@crm-planner`,
       'END:VEVENT',
       'END:VCALENDAR',
     ].join('\r\n');
@@ -169,7 +169,7 @@ export const Meetings: React.FC = () => {
 
   // Customizable outcomes state
   const [customOutcomes, setCustomOutcomes] = useState<{ id: string; label: string; workflow: string }[]>(() => {
-    const stored = localStorage.getItem('northstar_meeting_outcomes');
+    const stored = localStorage.getItem('crm_meeting_outcomes');
     if (stored) {
       try {
         return JSON.parse(stored);
@@ -183,13 +183,13 @@ export const Meetings: React.FC = () => {
       { id: 'follow-up', label: 'Follow-up Required', workflow: 'follow-up' },
       { id: 'not-interested', label: 'Not Interested', workflow: 'not-interested' }
     ];
-    localStorage.setItem('northstar_meeting_outcomes', JSON.stringify(defaults));
+    localStorage.setItem('crm_meeting_outcomes', JSON.stringify(defaults));
     return defaults;
   });
 
   useEffect(() => {
     const loadOutcomes = () => {
-      const stored = localStorage.getItem('northstar_meeting_outcomes');
+      const stored = localStorage.getItem('crm_meeting_outcomes');
       if (stored) {
         try {
           setCustomOutcomes(JSON.parse(stored));
@@ -198,8 +198,8 @@ export const Meetings: React.FC = () => {
         }
       }
     };
-    window.addEventListener('northstar-outcomes-updated', loadOutcomes);
-    return () => window.removeEventListener('northstar-outcomes-updated', loadOutcomes);
+    window.addEventListener('crm-outcomes-updated', loadOutcomes);
+    return () => window.removeEventListener('crm-outcomes-updated', loadOutcomes);
   }, []);
 
   const selectedOutcomeObj = customOutcomes.find(o => o.label === outcome);
@@ -944,7 +944,7 @@ export const Meetings: React.FC = () => {
           ? "We are currently drafting the next phase proposal and will have the agreement documentation ready for your review by early next week."
           : "I will follow up in a few days to verify if your team has any questions on the materials we shared."
       }`;
-      closing = `Sincerely,\n\n${salespersonName}\nNorthstar CRM Account Owner`;
+      closing = `Sincerely,\n\n${salespersonName}\nCRM Planner Account Owner`;
     }
     
     return `${opening}\n\n${body}\n\n${closing}`;

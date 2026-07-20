@@ -51,7 +51,7 @@ export async function fetchGeocodingSuggestions(
       signal: controller.signal,
       headers: {
         'Accept-Language': 'en',
-        'User-Agent': 'Northstar-CRM/1.0'
+        'User-Agent': 'CRM-Planner/1.0'
       }
     });
     clearTimeout(timeoutId);
@@ -98,7 +98,7 @@ export async function geocodeStructuredAddress(address: {
       signal: controller.signal,
       headers: {
         'Accept-Language': 'en',
-        'User-Agent': 'Northstar-CRM/1.0'
+        'User-Agent': 'CRM-Planner/1.0'
       }
     });
     clearTimeout(timeoutId);

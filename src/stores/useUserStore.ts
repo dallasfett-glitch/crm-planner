@@ -14,11 +14,11 @@ interface UserStoreState {
   updateUser: (uid: string, userData: Partial<UserProfile>) => Promise<void>;
 }
 
-const STORAGE_KEY = 'northstar_mock_users';
+const STORAGE_KEY = 'crm_mock_users';
 const DEFAULT_MOCK_USERS: UserProfile[] = [
   {
     uid: 'admin-uid',
-    email: 'admin@northstar.com',
+    email: 'admin@crmplanner.com',
     displayName: 'Admin User',
     role: 'admin',
     monthly_meeting_quota: 20,
@@ -31,7 +31,7 @@ const DEFAULT_MOCK_USERS: UserProfile[] = [
   },
   {
     uid: 'sales-uid',
-    email: 'sales@northstar.com',
+    email: 'sales@crmplanner.com',
     displayName: 'John Salesperson',
     role: 'salesperson',
     monthly_meeting_quota: 20,
@@ -157,7 +157,7 @@ export const useUserStore = create<UserStoreState>((set, get) => ({
       localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
       set({ users: list });
       if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('northstar-user-updated'));
+        window.dispatchEvent(new CustomEvent('crm-user-updated'));
       }
     }
   },
@@ -189,7 +189,7 @@ export const useUserStore = create<UserStoreState>((set, get) => ({
       localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
       set({ users: list });
       if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('northstar-user-updated'));
+        window.dispatchEvent(new CustomEvent('crm-user-updated'));
       }
     }
   },
@@ -214,7 +214,7 @@ export const useUserStore = create<UserStoreState>((set, get) => ({
       localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
       set({ users: list });
       if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('northstar-user-updated'));
+        window.dispatchEvent(new CustomEvent('crm-user-updated'));
       }
     }
   },
