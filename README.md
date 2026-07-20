@@ -18,6 +18,8 @@ CRM Planner is a modern, high-performance Customer Relationship Management (CRM)
 * **Calendar Integrations:** Generate custom Google Calendar URLs or download standard `.ics` files for Microsoft Outlook and Apple Calendar.
 * **Dual Persistence Layer:** Automatic integration with Google Firebase (Firestore / Auth) if configuration keys are present, falling back to synchronous local storage simulation.
 
+<img width="1905" height="906" alt="image" src="https://github.com/user-attachments/assets/dc7b3862-31a0-49b6-8367-c597832e6767" />
+
 ---
 
 ## 🛠️ Architecture & Tech Stack
