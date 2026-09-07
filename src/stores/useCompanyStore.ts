@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, Timestamp, query, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, setDoc, Timestamp, query, orderBy } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '../firebase';
 
 export interface Company {
@@ -110,7 +110,15 @@ export const useCompanyStore = create<CompanyState>((set, get) => ({
 
     if (isFirebaseConfigured && db) {
       const q = query(collection(db, 'companies'), orderBy('name', 'asc'));
-      const unsubscribe = onSnapshot(q, (snapshot) => {
+      const unsubscribe = onSnapshot(q, async (snapshot) => {
+        if (snapshot.empty && !get().initialized) {
+          for (const c of SEED_COMPANIES) {
+            const { id, ...data } = c;
+            await setDoc(doc(db!, 'companies', id), data);
+          }
+          return;
+        }
+
         const companyList = snapshot.docs.map((docSnap) => {
           const data = docSnap.data();
           return {

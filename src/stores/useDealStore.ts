@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, Timestamp, query, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, setDoc, Timestamp, query, orderBy } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '../firebase';
 
 export type DealStage = 'qualification' | 'proposal' | 'negotiation' | 'closed-won' | 'closed-lost';
@@ -95,7 +95,15 @@ export const useDealStore = create<DealState>((set, get) => ({
 
     if (isFirebaseConfigured && db) {
       const q = query(collection(db, 'deals'), orderBy('name', 'asc'));
-      const unsubscribe = onSnapshot(q, (snapshot) => {
+      const unsubscribe = onSnapshot(q, async (snapshot) => {
+        if (snapshot.empty && !get().initialized) {
+          for (const d of SEED_DEALS) {
+            const { id, ...data } = d;
+            await setDoc(doc(db!, 'deals', id), data);
+          }
+          return;
+        }
+
         const dealList = snapshot.docs.map((docSnap) => {
           const data = docSnap.data();
           return {
