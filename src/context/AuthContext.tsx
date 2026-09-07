@@ -83,11 +83,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 ...(userSnap.data() as Omit<UserProfile, 'uid' | 'email'>),
               });
             } else {
-              // Create user profile if missing
+              // Create user profile if missing. Check if email matches designated initial admin email
+              const initialAdminEmail = import.meta.env.VITE_INITIAL_ADMIN_EMAIL?.toLowerCase().trim();
+              const userEmail = (firebaseUser.email || '').toLowerCase().trim();
+              const isInitialAdmin = !!(initialAdminEmail && userEmail === initialAdminEmail);
+
               const profile: Omit<UserProfile, 'uid'> = {
                 email: firebaseUser.email || '',
                 displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
-                role: 'salesperson',
+                role: isInitialAdmin ? 'admin' : 'salesperson',
               };
               await setDoc(userRef, {
                 ...profile,
@@ -156,18 +160,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signIn = async (email: string, password: string) => {
     if (isFirebaseConfigured && auth) {
       await signInWithEmailAndPassword(auth, email, password);
-    } else {
-      // Mock Sign In
+    } else if (import.meta.env.DEV) {
+      // Mock Sign In (Development mode only)
       const mockUsers: UserProfile[] = JSON.parse(localStorage.getItem(MOCK_USERS_KEY) || '[]');
       const foundUser = mockUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
       
-      // Simple mock validation (any password matches for mock accounts)
       if (foundUser) {
         localStorage.setItem(CURRENT_MOCK_USER_KEY, JSON.stringify(foundUser));
         setUser(foundUser);
       } else {
-        throw new Error('User not found. Try admin@crmplanner.com or sales@crmplanner.com (any password).');
+        throw new Error('User not found in local development database.');
       }
+    } else {
+      throw new Error('Production environment requires valid Firebase Authentication configuration.');
     }
   };
 
@@ -179,10 +184,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   ) => {
     if (isFirebaseConfigured && auth && db) {
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const initialAdminEmail = import.meta.env.VITE_INITIAL_ADMIN_EMAIL?.toLowerCase().trim();
+      const isInitialAdmin = !!(initialAdminEmail && email.toLowerCase().trim() === initialAdminEmail);
+      const assignedRole = isInitialAdmin ? 'admin' : (role === 'admin' && !initialAdminEmail ? 'salesperson' : role);
+
       const profile: Omit<UserProfile, 'uid'> = {
         email,
         displayName,
-        role,
+        role: assignedRole,
       };
       await setDoc(doc(db!, 'users', userCredential.user.uid), {
         ...profile,

@@ -1,0 +1,75 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isAdmin() {
+      return isAuthenticated() && 
+        (request.auth.token.role == 'admin' || 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin');
+    }
+    
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    
+    function isAssignedSalesperson(resourceData) {
+      return isAuthenticated() && (
+        resourceData.assignedTo == request.auth.uid || 
+        resourceData.ownerId == request.auth.uid ||
+        resourceData.primaryOwner == request.auth.uid
+      );
+    }
+
+    // User Profiles Collection
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      // Only existing Admins can set role to 'admin'; public signups are restricted to 'salesperson'
+      allow create: if isAuthenticated() && (isAdmin() || request.resource.data.role != 'admin');
+      allow update: if isAdmin() || (isOwner(userId) && request.resource.data.role == resource.data.role);
+      allow delete: if isAdmin();
+    }
+
+    // Contacts Collection
+    match /contacts/{contactId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAdmin() || isAssignedSalesperson(resource.data) || isAssignedSalesperson(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // Companies Collection
+    match /companies/{companyId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAdmin() || isAssignedSalesperson(resource.data) || isAssignedSalesperson(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // Deals Collection
+    match /deals/{dealId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAdmin() || isAssignedSalesperson(resource.data) || isAssignedSalesperson(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // Meetings Collection
+    match /meetings/{meetingId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAdmin() || isAssignedSalesperson(resource.data) || isAssignedSalesperson(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // Settings Collection (Global App Settings)
+    match /settings/{settingId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+  }
+}

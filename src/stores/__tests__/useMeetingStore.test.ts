@@ -128,15 +128,20 @@ describe('useMeetingStore - Cadence & Scheduling Logic', () => {
     useMeetingStore.getState().runPredictiveSuggestions();
 
     const meetings = useMeetingStore.getState().meetings;
+    const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
-    // Contact A (Tier A, threshold 30, elapsed 35) should have a suggested meeting
-    const suggestionA = meetings.find(m => m.contactId === 'contact-a' && m.status === 'suggested');
+    // Contact A (Tier A, threshold 30, elapsed 35) should have a suggested meeting in the active month
+    const suggestionA = meetings.find(m => m.contactId === 'contact-a' && m.month === currentMonthStr && m.status === 'suggested');
     expect(suggestionA).toBeDefined();
     expect(suggestionA?.whyContext).toContain('Tier A');
 
-    // Contact B (Tier B, threshold 60, elapsed 45) should NOT have a suggested meeting
-    const suggestionB = meetings.find(m => m.contactId === 'contact-b' && m.status === 'suggested');
-    expect(suggestionB).toBeUndefined();
+    // Contact B (Tier B, threshold 60, elapsed 45) should NOT have a suggested meeting in the active month
+    const currentMonthSuggestionB = meetings.find(m => m.contactId === 'contact-b' && m.month === currentMonthStr && m.status === 'suggested');
+    expect(currentMonthSuggestionB).toBeUndefined();
+
+    // But Contact B SHOULD be forecasted in future months (when elapsed days exceed 60)
+    const futureSuggestionB = meetings.find(m => m.contactId === 'contact-b' && m.month !== currentMonthStr && m.status === 'suggested');
+    expect(futureSuggestionB).toBeDefined();
   });
 
   it('should lock in suggested meeting to pending on approval', async () => {
@@ -204,5 +209,162 @@ describe('useMeetingStore - Cadence & Scheduling Logic', () => {
     const nextMonthMeet = meetings.find(m => m.contactId === 'c1' && m.status === 'suggested');
     expect(nextMonthMeet).toBeDefined();
     expect(nextMonthMeet?.whyContext).toContain('Auto-rescheduled');
+  });
+
+  it('should generate 3-month suggested outlook with geographic proximity clustering across multiple salespeople', async () => {
+    const now = new Date();
+    // 3 contacts: 2 in Richmond assigned to rep-1, 1 in South Yarra assigned to rep-2
+    const mockContacts = [
+      {
+        id: 'c-rep1-richmond-1',
+        name: 'Contact One',
+        email: 'one@test.com',
+        phone: '111',
+        role: 'Buyer',
+        status: 'client' as const,
+        tier: 'A' as const,
+        companyId: 'comp-1',
+        companyName: 'Richmond Tech',
+        assignedSalespersonId: 'rep-1',
+        primaryOwner: 'Rep 1',
+        suburb: 'Richmond',
+        state: 'VIC',
+        createdAt: new Date(now.getTime() - 1000 * 60 * 60 * 24 * 60).toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      {
+        id: 'c-rep1-richmond-2',
+        name: 'Contact Two',
+        email: 'two@test.com',
+        phone: '222',
+        role: 'Director',
+        status: 'client' as const,
+        tier: 'A' as const,
+        companyId: 'comp-2',
+        companyName: 'Richmond Logistics',
+        assignedSalespersonId: 'rep-1',
+        primaryOwner: 'Rep 1',
+        suburb: 'Richmond',
+        state: 'VIC',
+        createdAt: new Date(now.getTime() - 1000 * 60 * 60 * 24 * 60).toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      {
+        id: 'c-rep2-southyarra',
+        name: 'Contact Three',
+        email: 'three@test.com',
+        phone: '333',
+        role: 'Manager',
+        status: 'client' as const,
+        tier: 'A' as const,
+        companyId: 'comp-3',
+        companyName: 'SY Retail',
+        assignedSalespersonId: 'rep-2',
+        primaryOwner: 'Rep 2',
+        suburb: 'South Yarra',
+        state: 'VIC',
+        createdAt: new Date(now.getTime() - 1000 * 60 * 60 * 24 * 60).toISOString(),
+        updatedAt: new Date().toISOString(),
+      }
+    ];
+
+    useContactStore.setState({ contacts: mockContacts as any, loading: false, initialized: true });
+    useMeetingStore.setState({ meetings: [], loading: false, initialized: true });
+
+    // Run engine
+    useMeetingStore.getState().runPredictiveSuggestions();
+
+    const meetings = useMeetingStore.getState().meetings;
+
+    // Rep 1 should have suggested meetings with clusterInfo
+    const rep1Suggestions = meetings.filter(m => m.salespersonId === 'rep-1' && m.status === 'suggested');
+    expect(rep1Suggestions.length).toBeGreaterThan(0);
+
+    const richmond1 = rep1Suggestions.find(m => m.contactId === 'c-rep1-richmond-1');
+    const richmond2 = rep1Suggestions.find(m => m.contactId === 'c-rep1-richmond-2');
+    expect(richmond1).toBeDefined();
+    expect(richmond2).toBeDefined();
+    expect(richmond1?.clusterInfo?.clusterKey).toBe('richmond-vic');
+    expect(richmond1?.clusterInfo?.clusterCount).toBe(2);
+
+    // Verify non-overlapping time slots on the same day for co-located contacts
+    if (richmond1 && richmond2 && richmond1.month === richmond2.month) {
+      expect(richmond1.scheduledAt).not.toBe(richmond2.scheduledAt);
+    }
+
+    // Rep 2 should also have suggestions populated automatically
+    const rep2Suggestions = meetings.filter(m => m.salespersonId === 'rep-2' && m.status === 'suggested');
+    expect(rep2Suggestions.length).toBeGreaterThan(0);
+  });
+
+  it('should support batch approval for an entire cluster and all suggestions', async () => {
+    const mockSuggestions = [
+      {
+        id: 'sugg-1',
+        contactId: 'c1',
+        contactName: 'Alpha',
+        companyId: 'comp1',
+        companyName: 'Comp1',
+        salespersonId: 'rep-1',
+        month: '2026-08',
+        status: 'suggested' as const,
+        outcome: '',
+        comments: '',
+        clusterInfo: { clusterKey: 'richmond-vic', clusterName: 'Richmond Territory' },
+        scheduledAt: new Date().toISOString(),
+        completedAt: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      {
+        id: 'sugg-2',
+        contactId: 'c2',
+        contactName: 'Beta',
+        companyId: 'comp2',
+        companyName: 'Comp2',
+        salespersonId: 'rep-1',
+        month: '2026-08',
+        status: 'suggested' as const,
+        outcome: '',
+        comments: '',
+        clusterInfo: { clusterKey: 'richmond-vic', clusterName: 'Richmond Territory' },
+        scheduledAt: new Date().toISOString(),
+        completedAt: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      {
+        id: 'sugg-3',
+        contactId: 'c3',
+        contactName: 'Gamma',
+        companyId: 'comp3',
+        companyName: 'Comp3',
+        salespersonId: 'rep-2',
+        month: '2026-08',
+        status: 'suggested' as const,
+        outcome: '',
+        comments: '',
+        clusterInfo: { clusterKey: 'hawthorn-vic', clusterName: 'Hawthorn Territory' },
+        scheduledAt: new Date().toISOString(),
+        completedAt: null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }
+    ];
+
+    useMeetingStore.setState({ meetings: mockSuggestions as any, loading: false, initialized: true });
+
+    // 1. Approve cluster 'richmond-vic'
+    await useMeetingStore.getState().approveCluster('richmond-vic');
+    let meetings = useMeetingStore.getState().meetings;
+
+    expect(meetings.find(m => m.id === 'sugg-1')?.status).toBe('pending');
+    expect(meetings.find(m => m.id === 'sugg-2')?.status).toBe('pending');
+    expect(meetings.find(m => m.id === 'sugg-3')?.status).toBe('suggested');
+
+    // 2. Approve all remaining suggestions
+    await useMeetingStore.getState().approveAllSuggested();
+    meetings = useMeetingStore.getState().meetings;
+    expect(meetings.every(m => m.status === 'pending')).toBe(true);
   });
 });

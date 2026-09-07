@@ -25,7 +25,7 @@ import {
   Check,
   Sparkles,
   Info,
-  Map,
+  Map as MapIcon,
   Navigation,
   Copy,
   MapPin
@@ -53,6 +53,9 @@ export const Meetings: React.FC = () => {
   const updateMeeting = useMeetingStore(state => state.updateMeeting);
   const deleteMeeting = useMeetingStore(state => state.deleteMeeting);
   const approveMeeting = useMeetingStore(state => state.approveMeeting);
+  const approveAllSuggested = useMeetingStore(state => state.approveAllSuggested);
+  const approveCluster = useMeetingStore(state => state.approveCluster);
+  const editSuggestedMeeting = useMeetingStore(state => state.editSuggestedMeeting);
   const rejectMeeting = useMeetingStore(state => state.rejectMeeting);
   const generateNext3MonthsSchedule = useMeetingStore(state => state.generateNext3MonthsSchedule);
 
@@ -88,9 +91,25 @@ export const Meetings: React.FC = () => {
   const currentMonthStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
   const [selectedMonth, setSelectedMonth] = useState(currentMonthStr);
 
-  // Active salesperson filter (for admin users, defaults to themselves)
-  const [selectedSalespersonId, setSelectedSalespersonId] = useState(() => user?.uid || '');
-  const resolvedSalespersonId = canViewAllSchedules ? (selectedSalespersonId || user?.uid || '') : (user?.uid || '');
+  // Active salesperson filter (defaults to ALL for admins to see complete team schedule)
+  const [selectedSalespersonId, setSelectedSalespersonId] = useState<'ALL' | string>(() => (user?.role === 'admin' ? 'ALL' : user?.uid || 'ALL'));
+  const resolvedSalespersonId = canViewAllSchedules ? (selectedSalespersonId || 'ALL') : (user?.uid || '');
+
+  // Suggestion Customization Modal states
+  const [customizingSuggestion, setCustomizingSuggestion] = useState<Meeting | null>(null);
+  const [customizingDate, setCustomizingDate] = useState('');
+  const [customizingTime, setCustomizingTime] = useState('09:30');
+  const [customizingSalespersonId, setCustomizingSalespersonId] = useState('');
+
+  const handleOpenCustomizeSuggestion = (meeting: Meeting) => {
+    const dt = new Date(meeting.scheduledAt);
+    const dateStr = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+    const timeStr = `${String(dt.getHours()).padStart(2, '0')}:${String(dt.getMinutes()).padStart(2, '0')}`;
+    setCustomizingDate(dateStr);
+    setCustomizingTime(timeStr);
+    setCustomizingSalespersonId(meeting.salespersonId || user?.uid || 'sales-uid');
+    setCustomizingSuggestion(meeting);
+  };
 
   // At-risk contacts modal
   const [atRiskModalOpen, setAtRiskModalOpen] = useState(false);
@@ -279,20 +298,65 @@ export const Meetings: React.FC = () => {
     setSelectedMonth(nextMonthStr);
   };
 
-  // Filter meetings for selected month and salesperson
+  // Filter meetings for selected month and salesperson (or ALL)
   const filteredMeetings = meetings.filter(m => 
     m.month === selectedMonth && 
-    m.salespersonId === resolvedSalespersonId
+    (resolvedSalespersonId === 'ALL' || m.salespersonId === resolvedSalespersonId)
   );
+
+  // 3-Month Rolling Horizon Outlook
+  const threeMonthsOutlook = React.useMemo(() => {
+    const base = new Date();
+    const list = [];
+    for (let i = 0; i < 3; i++) {
+      const d = new Date(base.getFullYear(), base.getMonth() + i, 1);
+      const mStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const mLabel = d.toLocaleString('default', { month: 'short', year: 'numeric' });
+      const monthMeets = meetings.filter(m => 
+        m.month === mStr && 
+        (resolvedSalespersonId === 'ALL' ? true : m.salespersonId === resolvedSalespersonId)
+      );
+      const conf = monthMeets.filter(m => m.status === 'pending' || m.status === 'completed').length;
+      const sugg = monthMeets.filter(m => m.status === 'suggested').length;
+      list.push({
+        monthStr: mStr,
+        label: mLabel,
+        confirmedCount: conf,
+        suggestedCount: sugg,
+        isSelected: mStr === selectedMonth,
+        isCurrent: i === 0,
+        offset: i
+      });
+    }
+    return list;
+  }, [meetings, resolvedSalespersonId, selectedMonth]);
+
+  // Suggested meetings & cluster breakdown for current view
+  const suggestedMeetingsInView = filteredMeetings.filter(m => m.status === 'suggested');
+  const clustersInView = React.useMemo(() => {
+    const map = new Map<string, { clusterKey: string; clusterName: string; count: number; meetings: Meeting[] }>();
+    suggestedMeetingsInView.forEach(m => {
+      const key = m.clusterInfo?.clusterKey || 'general';
+      const name = m.clusterInfo?.clusterName || 'General Territory';
+      if (!map.has(key)) {
+        map.set(key, { clusterKey: key, clusterName: name, count: 0, meetings: [] });
+      }
+      const entry = map.get(key)!;
+      entry.count++;
+      entry.meetings.push(m);
+    });
+    return Array.from(map.values());
+  }, [suggestedMeetingsInView]);
 
   // --- SaaS KPI Calculations ---
   // Monthly scheduled quota
+  const isAllReps = resolvedSalespersonId === 'ALL';
   const selectedSalesperson = users.find(u => u.uid === resolvedSalespersonId);
-  const monthlyQuota = selectedSalesperson 
-    ? (selectedSalesperson.monthly_meeting_quota !== undefined && selectedSalesperson.monthly_meeting_quota !== null
+  const monthlyQuota = isAllReps
+    ? (users.length > 0 ? users.reduce((acc, u) => acc + (u.monthly_meeting_quota || 20), 0) : 40)
+    : (selectedSalesperson?.monthly_meeting_quota !== undefined && selectedSalesperson.monthly_meeting_quota !== null
         ? selectedSalesperson.monthly_meeting_quota
-        : 20)
-    : 20;
+        : 20);
   
   // 1. Month Progress: Total confirmed + completed meetings
   const confirmedCount = filteredMeetings.filter(m => m.status === 'pending' || m.status === 'completed').length;
@@ -300,7 +364,14 @@ export const Meetings: React.FC = () => {
   // 2. Coverage Gaps: Contacts missing a scheduled meeting this month whose cadence has lapsed
   const thresholds = { A: 30, B: 60, C: 90 };
   const coverageGapsContacts = contacts.filter(contact => {
-    const hasMonthMeeting = meetings.some(m => m.contactId === contact.id && m.month === selectedMonth && m.salespersonId === resolvedSalespersonId);
+    if (!isAllReps && contact.assignedSalespersonId && contact.assignedSalespersonId !== resolvedSalespersonId) {
+      return false;
+    }
+    const hasMonthMeeting = meetings.some(m => 
+      m.contactId === contact.id && 
+      m.month === selectedMonth && 
+      (isAllReps ? true : m.salespersonId === resolvedSalespersonId)
+    );
     if (hasMonthMeeting) return false;
     const contactCompleted = meetings.filter(m => m.contactId === contact.id && m.status === 'completed');
     let lastMeet: Date;
@@ -324,7 +395,7 @@ export const Meetings: React.FC = () => {
   );
   const contactsTouchedCount = touchedContactIds.size;
   const totalActiveContacts = contacts.filter(c =>
-    c.assignedSalespersonId === resolvedSalespersonId && c.status !== 'inactive'
+    c.status !== 'inactive' && (isAllReps ? true : c.assignedSalespersonId === resolvedSalespersonId)
   ).length;
 
   // 4. Follow-ups Pending: completed meetings with a follow-up outcome (or explicit date) and no subsequent meeting booked
@@ -332,12 +403,12 @@ export const Meetings: React.FC = () => {
     customOutcomes.filter(o => o.workflow === 'follow-up').map(o => o.label)
   );
   const followUpsPendingCount = meetings.filter(m =>
-    m.salespersonId === resolvedSalespersonId &&
+    (isAllReps ? true : m.salespersonId === resolvedSalespersonId) &&
     m.status === 'completed' &&
     (m.followUpDate || followUpOutcomeLabels.has(m.outcome || '')) &&
     !meetings.some(fm =>
       fm.contactId === m.contactId &&
-      fm.salespersonId === resolvedSalespersonId &&
+      (isAllReps ? true : fm.salespersonId === resolvedSalespersonId) &&
       fm.id !== m.id &&
       (m.followUpDate ? fm.month >= m.followUpDate.substring(0, 7) : fm.month > m.month) &&
       (fm.status === 'pending' || fm.status === 'suggested' || fm.status === 'completed')
@@ -1170,6 +1241,56 @@ export const Meetings: React.FC = () => {
 
       </div>
 
+      {/* 3-Month Automated Outlook Bar */}
+      <div className="bg-crm-card border border-crm-border p-3.5 sm:p-4 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-3.5 shadow-xs">
+        <div className="flex items-center space-x-2 shrink-0">
+          <div className="p-1.5 rounded-lg bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/20">
+            <Sparkles className="h-4 w-4" />
+          </div>
+          <div>
+            <span className="text-xs font-extrabold uppercase tracking-wider text-crm-text">
+              3-Month Schedule Outlook
+            </span>
+            <p className="text-[11px] text-crm-muted">Auto-forecasted cadence drafts across rolling 90 days</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 flex-1 max-w-2xl">
+          {threeMonthsOutlook.map((m) => (
+            <button
+              key={m.monthStr}
+              type="button"
+              onClick={() => setSelectedMonth(m.monthStr)}
+              className={`p-2.5 rounded-xl border text-left transition flex items-center justify-between cursor-pointer ${
+                m.isSelected
+                  ? 'bg-purple-600 text-white border-purple-600 shadow-md shadow-purple-600/20'
+                  : 'bg-crm-bg border-crm-border hover:border-purple-500/40 text-crm-text hover:bg-crm-card'
+              }`}
+            >
+              <div>
+                <div className="flex items-center space-x-1.5">
+                  <span className="text-xs font-bold">{m.label}</span>
+                  {m.isCurrent && (
+                    <span className={`text-[9px] uppercase px-1.5 py-0.2 rounded font-extrabold ${m.isSelected ? 'bg-white/20 text-white' : 'bg-primary/15 text-primary'}`}>
+                      Active
+                    </span>
+                  )}
+                </div>
+                <div className={`text-[10px] mt-0.5 font-medium ${m.isSelected ? 'text-white/85' : 'text-crm-muted'}`}>
+                  {m.confirmedCount} confirmed &bull; {m.suggestedCount} suggested
+                </div>
+              </div>
+              {m.suggestedCount > 0 && (
+                <span className={`text-[10px] font-extrabold px-1.5 py-0.5 rounded-full shrink-0 ${
+                  m.isSelected ? 'bg-white text-purple-700' : 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/25'
+                }`}>
+                  +{m.suggestedCount}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Toolbar / Filters */}
       <div className="bg-crm-card border border-crm-border rounded-2xl p-3 sm:p-4 flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3 sm:gap-4 shrink-0">
         <div className="flex flex-row flex-wrap items-center gap-3 flex-1 justify-between sm:justify-start">
@@ -1194,7 +1315,7 @@ export const Meetings: React.FC = () => {
                   : 'text-crm-muted hover:text-crm-text'
               }`}
             >
-              <Map className="h-3.5 w-3.5" />
+              <MapIcon className="h-3.5 w-3.5" />
               <span>Geographic Planner</span>
             </button>
           </div>
@@ -1224,10 +1345,11 @@ export const Meetings: React.FC = () => {
           <div className="flex items-center space-x-2 w-full md:w-auto justify-between md:justify-end border-t md:border-t-0 border-crm-border/60 pt-2.5 md:pt-0">
             <span className="text-[10px] font-bold text-crm-muted uppercase tracking-wider">Viewing schedule:</span>
             <select
-              value={resolvedSalespersonId}
+              value={selectedSalespersonId}
               onChange={(e) => setSelectedSalespersonId(e.target.value)}
               className="bg-crm-bg border border-crm-border hover:border-crm-muted/40 rounded-xl px-3 py-1.5 text-xs text-primary font-semibold cursor-pointer outline-none transition shadow-sm w-44"
             >
+              <option value="ALL">All Salespeople</option>
               {salespersons.map(sp => (
                 <option key={sp.uid} value={sp.uid}>{sp.name}</option>
               ))}
@@ -1251,7 +1373,7 @@ export const Meetings: React.FC = () => {
             <div className="flex justify-between items-center p-4 bg-crm-bg/30 border-b border-crm-border z-10 shrink-0">
               <div>
                 <h4 className="text-sm font-bold text-crm-text uppercase tracking-wider flex items-center space-x-1.5">
-                  <Map className="h-4 w-4 text-primary" />
+                  <MapIcon className="h-4 w-4 text-primary" />
                   <span>Interactive Route Planner</span>
                 </h4>
                 <p className="text-[10px] text-crm-muted">Numbers indicate sequence. Color pins indicate scheduled client stops.</p>
@@ -1389,6 +1511,85 @@ export const Meetings: React.FC = () => {
       ) : (
         /* Schedule Table Tab */
         <div className="space-y-6">
+          {/* Automated Cadence Suggestion Review Banner & Batch Action Bar */}
+          {suggestedMeetingsInView.length > 0 && (
+            <div className="bg-gradient-to-r from-purple-500/10 via-indigo-500/5 to-purple-500/10 border border-purple-500/25 p-4 sm:p-5 rounded-2xl shadow-sm space-y-3.5 animate-fade-in text-crm-text">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-start space-x-3">
+                  <div className="p-2 rounded-xl bg-purple-500/20 text-purple-600 dark:text-purple-400 border border-purple-500/30 shrink-0 mt-0.5">
+                    <Sparkles className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center space-x-2">
+                      <h3 className="font-extrabold text-sm sm:text-base text-crm-text">
+                        Automated Cadence Recommendations
+                      </h3>
+                      <span className="bg-purple-500/20 text-purple-700 dark:text-purple-300 text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border border-purple-500/30">
+                        {suggestedMeetingsInView.length} Proposed {suggestedMeetingsInView.length === 1 ? 'Visit' : 'Visits'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-crm-muted mt-0.5">
+                      Visits are automatically grouped by geographic vicinity with non-overlapping time slots to minimize driving time.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-2 shrink-0">
+                  <button
+                    onClick={async () => {
+                      try {
+                        await approveAllSuggested(selectedMonth, resolvedSalespersonId === 'ALL' ? undefined : resolvedSalespersonId);
+                        addToast(`Approved all ${suggestedMeetingsInView.length} suggested meetings for this period!`);
+                      } catch (err) {
+                        console.error('Error approving all:', err);
+                        addToast('Error approving suggestions.');
+                      }
+                    }}
+                    className="flex items-center space-x-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-xl font-bold text-xs transition shadow-sm cursor-pointer"
+                  >
+                    <Check className="h-4 w-4" />
+                    <span>Approve All Suggestions ({suggestedMeetingsInView.length})</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Geographic Clusters Breakdown */}
+              {clustersInView.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-purple-500/15 text-xs">
+                  <span className="text-[11px] font-bold text-crm-muted uppercase tracking-wider flex items-center space-x-1">
+                    <MapPin className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />
+                    <span>Territory Clusters:</span>
+                  </span>
+                  {clustersInView.map((cl) => (
+                    <div
+                      key={cl.clusterKey}
+                      className="inline-flex items-center space-x-2 px-2.5 py-1 rounded-lg text-xs font-semibold bg-crm-card/80 border border-purple-500/20 text-crm-text shadow-xs"
+                    >
+                      <span>{cl.clusterName}</span>
+                      <span className="bg-purple-500/20 text-purple-700 dark:text-purple-300 text-[10px] font-bold px-1.5 py-0.2 rounded-full">
+                        {cl.count} {cl.count === 1 ? 'stop' : 'stops'}
+                      </span>
+                      <button
+                        onClick={async () => {
+                          try {
+                            await approveCluster(cl.clusterKey, selectedMonth, resolvedSalespersonId === 'ALL' ? undefined : resolvedSalespersonId);
+                            addToast(`Approved cluster "${cl.clusterName}" (${cl.count} visits)!`);
+                          } catch (err) {
+                            console.error(err);
+                          }
+                        }}
+                        className="text-[10px] text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 font-bold hover:underline ml-1 cursor-pointer"
+                        title="Approve all visits in this cluster"
+                      >
+                        Approve Cluster
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Featured "Next Stop" Card for Mobile View (Quick road navigation & notes logging) */}
           {(() => {
             const nextMeet = getNextMeetingToMeet();
@@ -1466,10 +1667,10 @@ export const Meetings: React.FC = () => {
               return (
                 <div 
                   key={meeting.id}
-                  onClick={() => !isSuggested && handleOpenDrawer(meeting)}
+                  onClick={() => isSuggested ? handleOpenCustomizeSuggestion(meeting) : handleOpenDrawer(meeting)}
                   className={`p-5 rounded-2xl border transition-all shadow-sm ${
                     isSuggested 
-                      ? 'border-dashed border-2 border-purple-500/30 bg-purple-500/[0.01]' 
+                      ? 'border-dashed border-2 border-purple-500/40 bg-purple-500/[0.02] hover:bg-purple-500/[0.05] cursor-pointer' 
                       : 'bg-crm-card border-crm-border hover:border-primary/45 cursor-pointer'
                   }`}
                 >
@@ -1477,12 +1678,12 @@ export const Meetings: React.FC = () => {
                     <div className="flex items-center space-x-2">
                       <span className={`text-[10px] uppercase font-extrabold tracking-wider px-2 py-0.5 rounded ${
                         isSuggested 
-                          ? 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-500/20'
+                          ? 'bg-purple-500/15 text-purple-600 dark:text-purple-400 border border-purple-500/25'
                           : meeting.status === 'completed'
                           ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
                           : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20'
                       }`}>
-                        {isSuggested ? 'Suggested' : meeting.status}
+                        {isSuggested ? 'Suggested Draft' : meeting.status}
                       </span>
                     </div>
                     
@@ -1506,6 +1707,19 @@ export const Meetings: React.FC = () => {
                     <p className="text-xs text-crm-muted font-bold">{meeting.companyName}</p>
                   </div>
 
+                  {/* Proximity Cluster Badge */}
+                  {meeting.clusterInfo && (
+                    <div className="mt-2.5 inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold bg-purple-500/10 text-purple-700 dark:text-purple-300 border border-purple-500/20">
+                      <MapPin className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400 shrink-0" />
+                      <span>{meeting.clusterInfo.clusterName || 'Proximity Linked'}</span>
+                      {meeting.clusterInfo.clusterCount && meeting.clusterInfo.clusterCount > 1 && (
+                        <span className="text-[10px] bg-purple-600/20 text-purple-800 dark:text-purple-200 px-1.5 py-0.2 rounded font-bold">
+                          {meeting.clusterInfo.clusterCount} stops
+                        </span>
+                      )}
+                    </div>
+                  )}
+
                   {addressString && (
                     <div className="mt-3 pt-3 border-t border-crm-border/60 space-y-2">
                       <div className="flex items-start space-x-2 text-xs text-crm-muted font-medium">
@@ -1513,6 +1727,12 @@ export const Meetings: React.FC = () => {
                         <span>{addressString}</span>
                       </div>
                     </div>
+                  )}
+
+                  {isSuggested && meeting.whyContext && (
+                    <p className="mt-2.5 text-xs text-purple-700 dark:text-purple-300 italic bg-purple-500/5 p-2 rounded-lg border border-purple-500/15">
+                      {meeting.whyContext}
+                    </p>
                   )}
 
                   {(meeting.outcome || meeting.comments) && (
@@ -1542,6 +1762,15 @@ export const Meetings: React.FC = () => {
                           <span>Navigate</span>
                         </button>
                       )}
+                      {isSuggested && (
+                        <button
+                          onClick={() => handleOpenCustomizeSuggestion(meeting)}
+                          className="flex items-center space-x-1 bg-purple-500/10 hover:bg-purple-500 text-purple-700 dark:text-purple-300 hover:text-white border border-purple-500/20 px-2.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer"
+                        >
+                          <Edit className="h-3 w-3" />
+                          <span>Customize</span>
+                        </button>
+                      )}
                     </div>
                     
                     <div className="flex space-x-2">
@@ -1557,6 +1786,7 @@ export const Meetings: React.FC = () => {
                           <button
                             onClick={() => handleRejectSuggested(meeting)}
                             className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-500 hover:text-white border border-rose-500/20 transition cursor-pointer"
+                            title="Reject suggestion"
                           >
                             <X className="h-3.5 w-3.5" />
                           </button>
@@ -1620,18 +1850,30 @@ export const Meetings: React.FC = () => {
                     return (
                       <tr 
                         key={meeting.id}
-                        onClick={() => handleOpenDrawer(meeting)}
+                        onClick={() => isSuggested ? handleOpenCustomizeSuggestion(meeting) : handleOpenDrawer(meeting)}
                         className={`transition text-crm-text ${
                           isSuggested 
-                            ? 'border-dashed border-y-2 border-purple-500/30 bg-purple-500/[0.02] hover:bg-purple-500/[0.04]' 
+                            ? 'border-dashed border-y-2 border-purple-500/30 bg-purple-500/[0.02] hover:bg-purple-500/[0.05] cursor-pointer' 
                             : 'hover:bg-crm-bg/40 cursor-pointer'
                         }`}
                       >
                         <td className="py-4 px-6">
-                          <div>
+                          <div className="space-y-1">
                             <p className={`font-semibold text-sm ${isSuggested ? 'text-purple-800 dark:text-purple-300' : 'text-crm-text'}`}>
                               {meeting.contactName}
                             </p>
+                            {/* Proximity Linkage Badge */}
+                            {meeting.clusterInfo && (
+                              <div className="inline-flex items-center space-x-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium bg-purple-500/10 text-purple-700 dark:text-purple-300 border border-purple-500/20">
+                                <MapPin className="h-3 w-3 text-purple-600 dark:text-purple-400 shrink-0" />
+                                <span>{meeting.clusterInfo.clusterName || 'Proximity Linked'}</span>
+                                {meeting.clusterInfo.clusterCount && meeting.clusterInfo.clusterCount > 1 && (
+                                  <span className="text-[10px] bg-purple-600/20 text-purple-800 dark:text-purple-200 px-1 rounded font-bold">
+                                    {meeting.clusterInfo.clusterCount} stops
+                                  </span>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </td>
                         <td className="py-4 px-6">
@@ -1652,8 +1894,8 @@ export const Meetings: React.FC = () => {
                         </td>
                         <td className="py-4 px-6">
                           {isSuggested ? (
-                            <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded border bg-purple-500/10 border-purple-500/20 text-purple-600 dark:text-purple-400">
-                              Suggested
+                            <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded border bg-purple-500/15 border-purple-500/25 text-purple-600 dark:text-purple-400">
+                              Suggested Draft
                             </span>
                           ) : meeting.status === 'completed' ? (
                             <span className={`text-[10px] uppercase font-bold tracking-wider px-2.5 py-1 rounded-full border ${
@@ -1700,7 +1942,7 @@ export const Meetings: React.FC = () => {
                               setCommentTooltip({
                                 x,
                                 y,
-                                title: isSuggested ? 'Suggested Reason' : 'Meeting Discussion Notes',
+                                title: isSuggested ? 'Suggested Cadence Reason' : 'Meeting Discussion Notes',
                                 body: isSuggested
                                   ? (meeting.whyContext || 'Suggested by cadence trigger.')
                                   : (meeting.comments || 'No comments logged yet.'),
@@ -1720,15 +1962,22 @@ export const Meetings: React.FC = () => {
                             isSuggested ? (
                               <div className="flex justify-end items-center space-x-2">
                                 <button
+                                  onClick={() => handleOpenCustomizeSuggestion(meeting)}
+                                  className="p-1.5 rounded-lg text-purple-600 hover:text-white bg-purple-500/10 hover:bg-purple-600 border border-purple-500/20 transition shadow-sm cursor-pointer"
+                                  title="Customize Date & Time"
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </button>
+                                <button
                                   onClick={() => handleApproveSuggested(meeting)}
-                                  className="p-1.5 rounded-lg text-emerald-600 hover:text-white bg-emerald-500/10 hover:bg-emerald-500 border border-emerald-500/20 transition shadow-sm"
+                                  className="p-1.5 rounded-lg text-emerald-600 hover:text-white bg-emerald-500/10 hover:bg-emerald-500 border border-emerald-500/20 transition shadow-sm cursor-pointer"
                                   title="Approve & Schedule (Add to Calendar)"
                                 >
                                   <Check className="h-4 w-4" />
                                 </button>
                                 <button
                                   onClick={() => handleRejectSuggested(meeting)}
-                                  className="p-1.5 rounded-lg text-rose-600 hover:text-white bg-rose-500/10 hover:bg-rose-500 border border-rose-500/20 transition shadow-sm"
+                                  className="p-1.5 rounded-lg text-rose-600 hover:text-white bg-rose-500/10 hover:bg-rose-500 border border-rose-500/20 transition shadow-sm cursor-pointer"
                                   title="Reject Suggestion"
                                 >
                                   <X className="h-4 w-4" />
@@ -2480,6 +2729,145 @@ export const Meetings: React.FC = () => {
                 className="w-full bg-crm-bg hover:bg-crm-border text-crm-muted font-bold py-2.5 rounded-xl text-sm border border-crm-border transition shadow-sm"
               >
                 Cancel & Resolve Later
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Customize Cadence Suggestion Modal */}
+      {customizingSuggestion && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-fade-in">
+          <div className="bg-crm-card border border-crm-border rounded-3xl p-6 max-w-md w-full shadow-2xl text-crm-text space-y-5 animate-fade-in relative">
+            <div className="flex justify-between items-start">
+              <div>
+                <span className="text-[10px] font-extrabold uppercase tracking-widest text-purple-600 dark:text-purple-400 bg-purple-500/10 border border-purple-500/20 px-2 py-0.5 rounded">
+                  Customize Suggestion Draft
+                </span>
+                <h3 className="font-bold text-lg text-crm-text mt-1.5">{customizingSuggestion.contactName}</h3>
+                <p className="text-xs text-crm-muted font-semibold">{customizingSuggestion.companyName}</p>
+              </div>
+              <button
+                onClick={() => setCustomizingSuggestion(null)}
+                className="p-1.5 rounded-xl text-crm-muted hover:text-crm-text hover:bg-crm-bg transition"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {customizingSuggestion.clusterInfo && (
+              <div className="p-3.5 bg-purple-500/5 border border-purple-500/20 rounded-xl space-y-1.5 text-xs">
+                <div className="flex items-center space-x-1.5 text-purple-700 dark:text-purple-300 font-bold">
+                  <MapPin className="h-4 w-4" />
+                  <span>{customizingSuggestion.clusterInfo.clusterName || 'Geographic Cluster'}</span>
+                </div>
+                <p className="text-[11px] text-crm-muted leading-relaxed">
+                  {customizingSuggestion.whyContext}
+                </p>
+                {customizingSuggestion.clusterInfo.linkedContactNames && customizingSuggestion.clusterInfo.linkedContactNames.length > 0 && (
+                  <p className="text-[10px] text-purple-600/90 dark:text-purple-300/90 font-medium">
+                    Co-located with: {customizingSuggestion.clusterInfo.linkedContactNames.join(', ')}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Date & Time fields */}
+            <div className="space-y-3.5">
+              <div>
+                <label className="block text-xs font-bold text-crm-muted uppercase tracking-wider mb-1.5">
+                  Visit Date
+                </label>
+                <input
+                  type="date"
+                  value={customizingDate}
+                  onChange={(e) => setCustomizingDate(e.target.value)}
+                  className="w-full bg-crm-bg border border-crm-border rounded-xl px-3 py-2 text-xs text-crm-text outline-none focus:border-primary transition"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-crm-muted uppercase tracking-wider mb-1.5">
+                  Visit Time Slot
+                </label>
+                <div className="grid grid-cols-4 gap-1.5 mb-2">
+                  {['09:30', '11:30', '14:00', '15:30'].map((slot) => (
+                    <button
+                      key={slot}
+                      type="button"
+                      onClick={() => setCustomizingTime(slot)}
+                      className={`py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                        customizingTime === slot
+                          ? 'bg-primary text-white shadow-xs'
+                          : 'bg-crm-bg border border-crm-border text-crm-text hover:border-primary/50'
+                      }`}
+                    >
+                      {slot}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="time"
+                  value={customizingTime}
+                  onChange={(e) => setCustomizingTime(e.target.value)}
+                  className="w-full bg-crm-bg border border-crm-border rounded-xl px-3 py-2 text-xs text-crm-text outline-none focus:border-primary transition"
+                />
+              </div>
+
+              {canViewAllSchedules && (
+                <div>
+                  <label className="block text-xs font-bold text-crm-muted uppercase tracking-wider mb-1.5">
+                    Assigned Representative
+                  </label>
+                  <select
+                    value={customizingSalespersonId}
+                    onChange={(e) => setCustomizingSalespersonId(e.target.value)}
+                    className="w-full bg-crm-bg border border-crm-border rounded-xl px-3 py-2 text-xs text-crm-text outline-none focus:border-primary transition"
+                  >
+                    {salespersons.map((sp) => (
+                      <option key={sp.uid} value={sp.uid}>
+                        {sp.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between space-x-3 pt-2">
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!customizingDate || !customizingTime) return;
+                  const newIso = new Date(`${customizingDate}T${customizingTime}:00`).toISOString();
+                  await editSuggestedMeeting(customizingSuggestion.id, {
+                    scheduledAt: newIso,
+                    salespersonId: customizingSalespersonId,
+                  });
+                  addToast('Updated suggestion slot details.');
+                  setCustomizingSuggestion(null);
+                }}
+                className="flex-1 py-2.5 px-4 rounded-xl border border-crm-border hover:bg-crm-bg font-bold text-xs transition cursor-pointer"
+              >
+                Save as Draft
+              </button>
+
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!customizingDate || !customizingTime) return;
+                  const newIso = new Date(`${customizingDate}T${customizingTime}:00`).toISOString();
+                  await editSuggestedMeeting(customizingSuggestion.id, {
+                    scheduledAt: newIso,
+                    salespersonId: customizingSalespersonId,
+                  });
+                  await approveMeeting(customizingSuggestion.id);
+                  addToast(`Approved & locked meeting with ${customizingSuggestion.contactName}!`);
+                  setCustomizingSuggestion(null);
+                }}
+                className="flex-1 py-2.5 px-4 rounded-xl bg-primary hover:bg-primary-hover text-white font-bold text-xs transition shadow-md shadow-primary/20 cursor-pointer"
+              >
+                Approve & Lock In
               </button>
             </div>
           </div>

@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { AlertCircle, Key, Lock, Mail, UserPlus, LogIn, User } from 'lucide-react';
+import { AlertCircle, Key, Lock, Mail, LogIn } from 'lucide-react';
 
 export const Login: React.FC = () => {
-  const { signIn, signUp, isMockMode } = useAuth();
+  const { signIn, isMockMode } = useAuth();
   const navigate = useNavigate();
-  const [isSignUp, setIsSignUp] = useState(false);
 
   // Logo States
   const [logoLight] = useState(() => localStorage.getItem('crm_logo_light') || '/logo.png');
@@ -16,8 +15,6 @@ export const Login: React.FC = () => {
   // Fields
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [displayName, setDisplayName] = useState('');
-  const [role, setRole] = useState<'salesperson' | 'admin'>('salesperson');
 
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -28,14 +25,7 @@ export const Login: React.FC = () => {
     setLoading(true);
 
     try {
-      if (isSignUp) {
-        if (!displayName.trim()) {
-          throw new Error('Please enter a display name.');
-        }
-        await signUp(email, password, displayName, role);
-      } else {
-        await signIn(email, password);
-      }
+      await signIn(email, password);
       navigate('/');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'An error occurred during authentication.');
@@ -64,7 +54,7 @@ export const Login: React.FC = () => {
             />
           </div>
           <p className="text-crm-muted text-sm text-center font-medium">
-            {isSignUp ? 'Create your salesperson profile' : 'Sign in to access your dashboard'}
+            Sign in to access your dashboard
           </p>
         </div>
 
@@ -78,27 +68,6 @@ export const Login: React.FC = () => {
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
-          {isSignUp && (
-            <div>
-              <label className="block text-xs font-semibold text-crm-muted uppercase tracking-wider mb-2">
-                Display Name
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-crm-muted">
-                  <User className="h-4 w-4" />
-                </div>
-                <input
-                  type="text"
-                  placeholder="e.g. John Doe"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  className="w-full bg-crm-bg border border-crm-border focus:border-primary rounded-xl pl-10 pr-4 py-3 text-sm text-crm-text placeholder-crm-muted/50 outline-none transition"
-                  required
-                />
-              </div>
-            </div>
-          )}
-
           <div>
             <label className="block text-xs font-semibold text-crm-muted uppercase tracking-wider mb-2">
               Email Address
@@ -109,7 +78,7 @@ export const Login: React.FC = () => {
               </div>
               <input
                 type="email"
-                placeholder="salesperson@crmplanner.com"
+                placeholder="admin@crmplanner.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full bg-crm-bg border border-crm-border focus:border-primary rounded-xl pl-10 pr-4 py-3 text-sm text-crm-text placeholder-crm-muted/50 outline-none transition"
@@ -137,38 +106,6 @@ export const Login: React.FC = () => {
             </div>
           </div>
 
-          {isSignUp && (
-            <div>
-              <label className="block text-xs font-semibold text-crm-muted uppercase tracking-wider mb-2">
-                Account Role
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setRole('salesperson')}
-                  className={`py-2 px-4 rounded-xl border text-sm font-semibold transition ${
-                    role === 'salesperson'
-                      ? 'bg-primary/10 border-primary text-primary shadow-sm'
-                      : 'border-crm-border text-crm-muted hover:border-crm-muted/40 hover:text-crm-text'
-                  }`}
-                >
-                  Salesperson
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setRole('admin')}
-                  className={`py-2 px-4 rounded-xl border text-sm font-semibold transition ${
-                    role === 'admin'
-                      ? 'bg-primary/10 border-primary text-primary shadow-sm'
-                      : 'border-crm-border text-crm-muted hover:border-crm-muted/40 hover:text-crm-text'
-                  }`}
-                >
-                  Administrator
-                </button>
-              </div>
-            </div>
-          )}
-
           <button
             type="submit"
             disabled={loading}
@@ -176,11 +113,6 @@ export const Login: React.FC = () => {
           >
             {loading ? (
               <div className="w-5 h-5 border-2 border-t-transparent border-white rounded-full animate-spin" />
-            ) : isSignUp ? (
-              <>
-                <UserPlus className="h-4 w-4" />
-                <span>Create Account</span>
-              </>
             ) : (
               <>
                 <LogIn className="h-4 w-4" />
@@ -190,37 +122,31 @@ export const Login: React.FC = () => {
           </button>
         </form>
 
-        {/* Toggle Sign Up / Log In */}
+        {/* Account Provisioning Notice */}
         <div className="mt-6 text-center">
-          <button
-            onClick={() => {
-              setIsSignUp(!isSignUp);
-              setError(null);
-            }}
-            className="text-primary hover:text-primary-hover text-xs font-semibold hover:underline bg-transparent border-none outline-none cursor-pointer"
-          >
-            {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Create one"}
-          </button>
+          <p className="text-crm-muted text-xs">
+            Account access is provisioned by your system administrator.
+          </p>
         </div>
 
-        {/* Mock Mode Helper Box */}
-        {isMockMode && (
+        {/* Mock Mode Helper Box (Development Only) */}
+        {isMockMode && import.meta.env.DEV && (
           <div className="mt-8 pt-6 border-t border-crm-border bg-primary/[0.03] p-4 rounded-2xl border border-primary/10">
             <h3 className="text-[10px] font-extrabold uppercase tracking-widest text-primary mb-2 flex items-center space-x-1.5">
               <Key className="h-3 w-3" />
-              <span>Demo Mode seeded accounts</span>
+              <span>Demo Mode Admin Credentials</span>
             </h3>
             <ul className="space-y-1.5 text-xs text-crm-muted">
               <li className="flex justify-between">
-                <span>Salesperson:</span>
-                <strong className="text-crm-text">sales@crmplanner.com</strong>
-              </li>
-              <li className="flex justify-between">
-                <span>Administrator:</span>
+                <span>Administrator Email:</span>
                 <strong className="text-crm-text">admin@crmplanner.com</strong>
               </li>
+              <li className="flex justify-between">
+                <span>Password:</span>
+                <strong className="text-crm-text">admin123</strong>
+              </li>
               <li className="text-crm-muted italic text-[10px] mt-1 text-center font-medium">
-                * Type any password to sign in.
+                * Sign in as admin to issue and manage user accounts.
               </li>
             </ul>
           </div>

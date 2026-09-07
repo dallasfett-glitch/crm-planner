@@ -190,12 +190,12 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
         w-64 bg-crm-card border-r border-crm-border flex flex-col justify-between z-40 md:z-10
       `}>
         <div>
-          {/* Logo Brand */}
-          <div className="hidden md:flex items-center px-6 py-5 border-b border-crm-border">
+          {/* Logo Brand Container */}
+          <div className="hidden md:flex items-center justify-start min-h-[68px] max-h-[80px] px-5 py-3.5 border-b border-crm-border overflow-hidden">
             <img 
               src={theme === 'dark' ? logoDark : logoLight} 
-              alt="EMU Australia Logo" 
-              className={`h-10 w-auto object-contain ${
+              alt="Company Logo" 
+              className={`max-h-12 w-auto max-w-[190px] object-contain object-left ${
                 (theme === 'dark' && (!logoDark || logoDark === '/logo.png')) ? 'dark:invert' : ''
               }`} 
             />

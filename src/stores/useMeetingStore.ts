@@ -1,8 +1,9 @@
 import { create } from 'zustand';
 import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, Timestamp, query, orderBy } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '../firebase';
-import { useContactStore } from './useContactStore';
-import { useNoteStore } from './useNoteStore';
+import { useContactStore, type Contact } from './useContactStore';
+import { useNoteStore, type Note } from './useNoteStore';
+import { getSpatialClusterKey, getSpatialClusterName } from '../utils/geocoding';
 
 export interface Meeting {
   id: string;
@@ -16,6 +17,12 @@ export interface Meeting {
   outcome: string;
   comments: string;
   whyContext?: string; // Cadence suggestion context
+  clusterInfo?: {
+    clusterKey?: string;
+    clusterName?: string;
+    clusterCount?: number;
+    linkedContactNames?: string[];
+  };
   scheduledAt: string;
   completedAt: string | null;
   createdAt: string;
@@ -32,7 +39,10 @@ interface MeetingState {
   updateMeeting: (id: string, updates: Partial<Omit<Meeting, 'id' | 'createdAt' | 'updatedAt'>>) => Promise<void>;
   updateHistoricalOutcomes: (oldOutcome: string, newOutcome: string) => Promise<void>;
   approveMeeting: (id: string) => Promise<void>;
+  approveAllSuggested: (month?: string, salespersonId?: string) => Promise<void>;
+  approveCluster: (clusterKey: string, month?: string, salespersonId?: string) => Promise<void>;
   rejectMeeting: (id: string) => Promise<void>;
+  editSuggestedMeeting: (id: string, updates: Partial<Meeting>) => Promise<void>;
   deleteMeeting: (id: string) => Promise<void>;
   runPredictiveSuggestions: () => void;
   generateNext3MonthsSchedule: () => Promise<void>;
@@ -263,12 +273,11 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
     }
   },
 
-  // Core Automation Engine: Calculate and auto-populate cadence suggestion drafts
+  // Core Automation Engine: Calculate and auto-populate 3-month cadence suggestion drafts across all salespeople
   runPredictiveSuggestions: () => {
     // Wait until contacts are loaded in useContactStore
     const contacts = useContactStore.getState().contacts;
     if (contacts.length === 0) {
-      // Re-run whenever contacts populate
       const unsubContacts = useContactStore.subscribe((state) => {
         if (state.contacts.length > 0) {
           get().runPredictiveSuggestions();
@@ -279,93 +288,21 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
     }
 
     const meetingsList = get().meetings;
-    const activeMonth = getActiveMonth();
     const cadences = JSON.parse(localStorage.getItem(CADENCE_KEY) || JSON.stringify(DEFAULT_CADENCES));
-    const now = new Date();
-    let updated = false;
-    const newMeetings = [...meetingsList];
+    const notes = useNoteStore.getState().notes;
 
-    contacts.forEach((contact) => {
-      // 1. Skip inactive contacts
-      if (contact.status === 'inactive') return;
+    const { updatedMeetings, hasChanges } = build3MonthPredictiveSchedule(
+      meetingsList,
+      contacts,
+      notes,
+      cadences
+    );
 
-      // 2. Check if there is already a meeting scheduled for this contact in the active month
-      const hasMonthlyMeeting = meetingsList.some(
-        (m) => m.contactId === contact.id && m.month === activeMonth
-      );
-      if (hasMonthlyMeeting) return;
-
-      // 3. Find combined touchpoint dates (completed meetings and notes for contact + company)
-      const notesList = useNoteStore.getState().notes;
-      const contactMeets = meetingsList.filter((m) => m.contactId === contact.id && m.status === 'completed');
-      const contactNotes = notesList.filter((n) => n.parentId === contact.id && n.parentType === 'contact');
-      const companyMeets = contact.companyId ? meetingsList.filter((m) => m.companyId === contact.companyId && m.status === 'completed') : [];
-      const companyNotes = contact.companyId ? notesList.filter((n) => n.parentId === contact.companyId && n.parentType === 'company') : [];
-
-      let maxTouchpointTime = new Date(contact.createdAt).getTime();
-
-      const checkMax = (dateStr: string) => {
-        if (dateStr) {
-          const t = new Date(dateStr).getTime();
-          if (t > maxTouchpointTime) {
-            maxTouchpointTime = t;
-          }
-        }
-      };
-
-      contactMeets.forEach((m) => checkMax(m.completedAt || m.scheduledAt));
-      contactNotes.forEach((n) => checkMax(n.createdAt));
-      companyMeets.forEach((m) => checkMax(m.completedAt || m.scheduledAt));
-      companyNotes.forEach((n) => checkMax(n.createdAt));
-
-      const hasAnyTouchpoint = contactMeets.length > 0 || contactNotes.length > 0 || companyMeets.length > 0 || companyNotes.length > 0;
-      
-      let lastMeetingDate = new Date(maxTouchpointTime);
-      if (!hasAnyTouchpoint) {
-        // Fallback to offset days to trigger immediate suggestion
-        const offsetDays = contact.tier === 'A' ? 35 : contact.tier === 'B' ? 65 : 95;
-        lastMeetingDate = new Date(now.getTime() - 1000 * 60 * 60 * 24 * offsetDays);
-      }
-
-      // 4. Calculate elapsed days
-      const daysSinceLastMeeting = Math.max(0, Math.floor((now.getTime() - lastMeetingDate.getTime()) / (1000 * 60 * 60 * 24)));
-      const cadenceThreshold = cadences[contact.tier] || DEFAULT_CADENCES[contact.tier];
-
-      // 5. Trigger Suggestion
-      if (daysSinceLastMeeting >= cadenceThreshold) {
-        // Create suggested meeting details
-        const suggestedDate = new Date();
-        suggestedDate.setDate(suggestedDate.getDate() + ((3 + 7 - suggestedDate.getDay()) % 7 || 7));
-        suggestedDate.setHours(10, 0, 0, 0);
-
-        const newSuggestion: Meeting = {
-          id: `suggested-${contact.id}-${activeMonth}`,
-          contactId: contact.id,
-          contactName: contact.name,
-          companyId: contact.companyId,
-          companyName: contact.companyName,
-          salespersonId: contact.assignedSalespersonId || 'sales-uid',
-          month: activeMonth,
-          status: 'suggested',
-          outcome: '',
-          comments: '',
-          whyContext: `Suggested: No touchpoint with ${contact.name} or their company in ${daysSinceLastMeeting} days (Tier ${contact.tier}).`,
-          scheduledAt: suggestedDate.toISOString(),
-          completedAt: null,
-          createdAt: now.toISOString(),
-          updatedAt: now.toISOString(),
-        };
-
-        newMeetings.push(newSuggestion);
-        updated = true;
-      }
-    });
-
-    if (updated) {
+    if (hasChanges) {
       if (!isFirebaseConfigured) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(newMeetings));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedMeetings));
       }
-      set({ meetings: newMeetings });
+      set({ meetings: updatedMeetings });
     }
   },
 
@@ -498,7 +435,6 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
     const meeting = get().meetings.find(m => m.id === id);
     if (!meeting) return;
     
-    // In Firebase context, suggested meetings might be client-side only drafts, so we save them as new documents
     if (isFirebaseConfigured && db) {
       await addDoc(collection(db!, 'meetings'), {
         contactId: meeting.contactId,
@@ -510,15 +446,15 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
         status: 'pending',
         outcome: '',
         comments: '',
+        whyContext: meeting.whyContext || '',
+        clusterInfo: meeting.clusterInfo || null,
         scheduledAt: meeting.scheduledAt,
         completedAt: null,
         createdAt: new Date(),
         updatedAt: new Date()
       });
-      // Filter out the local suggested draft
       set({ meetings: get().meetings.filter(m => m.id !== id) });
     } else {
-      // Local Storage update
       const list = get().meetings.map(m => {
         if (m.id === id) {
           return {
@@ -532,6 +468,132 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
       localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
       set({ meetings: list });
     }
+  },
+
+  // Batch approve all suggestions matching optional month / salesperson filters
+  approveAllSuggested: async (month?: string, salespersonId?: string) => {
+    const currentMeetings = get().meetings;
+    const toApprove = currentMeetings.filter(m => {
+      if (m.status !== 'suggested') return false;
+      if (month && m.month !== month) return false;
+      if (salespersonId && m.salespersonId !== salespersonId) return false;
+      return true;
+    });
+
+    if (toApprove.length === 0) return;
+
+    if (isFirebaseConfigured && db) {
+      for (const m of toApprove) {
+        await addDoc(collection(db!, 'meetings'), {
+          contactId: m.contactId,
+          contactName: m.contactName,
+          companyId: m.companyId,
+          companyName: m.companyName,
+          salespersonId: m.salespersonId,
+          month: m.month,
+          status: 'pending',
+          outcome: '',
+          comments: '',
+          whyContext: m.whyContext || '',
+          clusterInfo: m.clusterInfo || null,
+          scheduledAt: m.scheduledAt,
+          completedAt: null,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        });
+      }
+      const toApproveIds = new Set(toApprove.map(m => m.id));
+      set({ meetings: currentMeetings.filter(m => !toApproveIds.has(m.id)) });
+    } else {
+      const toApproveIds = new Set(toApprove.map(m => m.id));
+      const list = currentMeetings.map(m => {
+        if (toApproveIds.has(m.id)) {
+          return {
+            ...m,
+            status: 'pending' as const,
+            updatedAt: new Date().toISOString()
+          };
+        }
+        return m;
+      });
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+      set({ meetings: list });
+    }
+  },
+
+  // Batch approve all suggestions in a specific geographic cluster
+  approveCluster: async (clusterKey: string, month?: string, salespersonId?: string) => {
+    const currentMeetings = get().meetings;
+    const toApprove = currentMeetings.filter(m => {
+      if (m.status !== 'suggested') return false;
+      if (m.clusterInfo?.clusterKey !== clusterKey) return false;
+      if (month && m.month !== month) return false;
+      if (salespersonId && m.salespersonId !== salespersonId) return false;
+      return true;
+    });
+
+    if (toApprove.length === 0) return;
+
+    if (isFirebaseConfigured && db) {
+      for (const m of toApprove) {
+        await addDoc(collection(db!, 'meetings'), {
+          contactId: m.contactId,
+          contactName: m.contactName,
+          companyId: m.companyId,
+          companyName: m.companyName,
+          salespersonId: m.salespersonId,
+          month: m.month,
+          status: 'pending',
+          outcome: '',
+          comments: '',
+          whyContext: m.whyContext || '',
+          clusterInfo: m.clusterInfo || null,
+          scheduledAt: m.scheduledAt,
+          completedAt: null,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        });
+      }
+      const toApproveIds = new Set(toApprove.map(m => m.id));
+      set({ meetings: currentMeetings.filter(m => !toApproveIds.has(m.id)) });
+    } else {
+      const toApproveIds = new Set(toApprove.map(m => m.id));
+      const list = currentMeetings.map(m => {
+        if (toApproveIds.has(m.id)) {
+          return {
+            ...m,
+            status: 'pending' as const,
+            updatedAt: new Date().toISOString()
+          };
+        }
+        return m;
+      });
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+      set({ meetings: list });
+    }
+  },
+
+  // Edit / customize a suggested meeting draft
+  editSuggestedMeeting: async (id: string, updates: Partial<Meeting>) => {
+    const currentMeetings = get().meetings;
+    const list = currentMeetings.map(m => {
+      if (m.id === id) {
+        const updatedMonth = updates.scheduledAt 
+          ? `${new Date(updates.scheduledAt).getFullYear()}-${String(new Date(updates.scheduledAt).getMonth() + 1).padStart(2, '0')}`
+          : m.month;
+        return {
+          ...m,
+          ...updates,
+          month: updatedMonth,
+          updatedAt: new Date().toISOString()
+        };
+      }
+      return m;
+    });
+    if (!isFirebaseConfigured) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+    }
+    set({ meetings: list });
   },
 
   // Deletes suggestion draft
@@ -556,55 +618,93 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
   },
 
   generateNext3MonthsSchedule: async () => {
-    const contacts = useContactStore.getState().contacts;
-    if (contacts.length === 0) return;
+    get().runPredictiveSuggestions();
+  },
+}));
 
-    const cadences = JSON.parse(localStorage.getItem(CADENCE_KEY) || JSON.stringify(DEFAULT_CADENCES));
-    const now = new Date();
-    
-    const targetMonths: string[] = [];
-    for (let i = 0; i < 3; i++) {
-      const temp = new Date();
-      temp.setMonth(temp.getMonth() + i);
-      targetMonths.push(`${temp.getFullYear()}-${String(temp.getMonth() + 1).padStart(2, '0')}`);
+/**
+ * Pure helper function to project and generate 3-month conflict-free cadence suggestions
+ * with geographic proximity clustering across all salespeople.
+ */
+function build3MonthPredictiveSchedule(
+  currentMeetings: Meeting[],
+  contacts: Contact[],
+  notes: Note[],
+  cadences: Record<string, number>
+): { updatedMeetings: Meeting[]; hasChanges: boolean } {
+  if (!contacts || contacts.length === 0) {
+    return { updatedMeetings: currentMeetings, hasChanges: false };
+  }
+
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth(); // 0-indexed
+
+  // 3-month rolling window: month 0, month 1, month 2
+  const targetMonths: { monthStr: string; year: number; monthIdx: number }[] = [];
+  for (let i = 0; i < 3; i++) {
+    const d = new Date(currentYear, currentMonth + i, 1);
+    const mStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    targetMonths.push({ monthStr: mStr, year: d.getFullYear(), monthIdx: d.getMonth() });
+  }
+
+  let updated = false;
+  const meetingsList = [...currentMeetings];
+
+  // Distinct salesperson IDs
+  const salespersonIds = new Set<string>();
+  contacts.forEach((c) => {
+    if (c.assignedSalespersonId) {
+      salespersonIds.add(c.assignedSalespersonId);
     }
+  });
+  if (salespersonIds.size === 0) {
+    salespersonIds.add('sales-uid');
+    salespersonIds.add('admin-uid');
+  }
 
-    const meetingsList = [...get().meetings];
-    let updated = false;
+  // Process month by month
+  targetMonths.forEach(({ monthStr, year, monthIdx }, mOffset) => {
+    const targetMonthStartDate = new Date(year, monthIdx, 1);
 
-    targetMonths.forEach((targetMonth) => {
-      contacts.forEach((contact) => {
-        if (contact.status === 'inactive') return;
+    salespersonIds.forEach((salespersonId) => {
+      // Find active contacts assigned to this salesperson
+      const repContacts = contacts.filter(
+        (c) =>
+          c.status !== 'inactive' &&
+          (c.assignedSalespersonId === salespersonId ||
+            (!c.assignedSalespersonId && salespersonId === 'sales-uid'))
+      );
 
+      if (repContacts.length === 0) return;
+
+      // Identify which contacts need a meeting in this target month
+      const dueContacts: { contact: Contact; daysSince: number; clusterKey: string; clusterName: string }[] = [];
+
+      repContacts.forEach((contact) => {
+        // Skip if already scheduled (suggested, pending, or completed) in this month
         const hasMeetingInMonth = meetingsList.some(
-          (m) => m.contactId === contact.id && m.month === targetMonth
+          (m) => m.contactId === contact.id && m.month === monthStr
         );
         if (hasMeetingInMonth) return;
 
-        const targetMonthStartDate = new Date(
-          parseInt(targetMonth.split('-')[0]),
-          parseInt(targetMonth.split('-')[1]) - 1,
-          1
-        );
-
-        const notesList = useNoteStore.getState().notes;
+        // Calculate latest touchpoint (completed meetings or notes)
         const contactMeets = meetingsList.filter(
-          (m) => m.contactId === contact.id && (m.status === 'completed' || m.status === 'pending' || m.status === 'suggested')
+          (m) => m.contactId === contact.id && (m.status === 'completed' || m.status === 'pending')
         );
-        const contactNotes = notesList.filter((n) => n.parentId === contact.id && n.parentType === 'contact');
+        const contactNotes = notes.filter((n) => n.parentId === contact.id && n.parentType === 'contact');
         const companyMeets = contact.companyId
-          ? meetingsList.filter((m) => m.companyId === contact.companyId && (m.status === 'completed' || m.status === 'pending' || m.status === 'suggested'))
+          ? meetingsList.filter((m) => m.companyId === contact.companyId && (m.status === 'completed' || m.status === 'pending'))
           : [];
-        const companyNotes = contact.companyId ? notesList.filter((n) => n.parentId === contact.companyId && n.parentType === 'company') : [];
+        const companyNotes = contact.companyId
+          ? notes.filter((n) => n.parentId === contact.companyId && n.parentType === 'company')
+          : [];
 
         let maxTouchpointTime = new Date(contact.createdAt).getTime();
-
-        const checkMax = (dateStr: string) => {
+        const checkMax = (dateStr?: string | null) => {
           if (dateStr) {
-            const d = new Date(dateStr);
-            if (d.getTime() < targetMonthStartDate.getTime() && d.getTime() > maxTouchpointTime) {
-              maxTouchpointTime = d.getTime();
-            }
+            const t = new Date(dateStr).getTime();
+            if (t > maxTouchpointTime) maxTouchpointTime = t;
           }
         };
 
@@ -613,54 +713,109 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
         companyMeets.forEach((m) => checkMax(m.completedAt || m.scheduledAt));
         companyNotes.forEach((n) => checkMax(n.createdAt));
 
-        const hasTouchpoint = contactMeets.length > 0 || contactNotes.length > 0 || companyMeets.length > 0 || companyNotes.length > 0;
-        
+        const hasAnyTouchpoint =
+          contactMeets.length > 0 || contactNotes.length > 0 || companyMeets.length > 0 || companyNotes.length > 0;
+
         let lastMeetingDate = new Date(maxTouchpointTime);
-        if (!hasTouchpoint) {
+        if (!hasAnyTouchpoint) {
           const offsetDays = contact.tier === 'A' ? 35 : contact.tier === 'B' ? 65 : 95;
-          lastMeetingDate = new Date(targetMonthStartDate.getTime() - 1000 * 60 * 60 * 24 * offsetDays);
+          lastMeetingDate = new Date(now.getTime() - 1000 * 60 * 60 * 24 * offsetDays);
         }
 
-        const daysSinceLastMeeting = Math.max(0, Math.floor((targetMonthStartDate.getTime() - lastMeetingDate.getTime()) / (1000 * 60 * 60 * 24)));
+        // Days elapsed relative to target month start
+        const referenceTime = mOffset === 0 ? now.getTime() : targetMonthStartDate.getTime();
+        const daysSinceLastMeeting = Math.max(
+          0,
+          Math.floor((referenceTime - lastMeetingDate.getTime()) / (1000 * 60 * 60 * 24))
+        );
         const cadenceThreshold = cadences[contact.tier] || DEFAULT_CADENCES[contact.tier];
 
-        const nextMeetingDueDate = new Date(lastMeetingDate.getTime() + cadenceThreshold * 24 * 60 * 60 * 1000);
-        const targetMonthYear = parseInt(targetMonth.split('-')[0]);
-        const targetMonthMonth = parseInt(targetMonth.split('-')[1]) - 1;
-        const nextDueDateYear = nextMeetingDueDate.getFullYear();
-        const nextDueDateMonth = nextMeetingDueDate.getMonth();
+        if (daysSinceLastMeeting >= cadenceThreshold) {
+          const clusterKey = getSpatialClusterKey(contact);
+          const clusterName = getSpatialClusterName(contact);
+          dueContacts.push({ contact, daysSince: daysSinceLastMeeting, clusterKey, clusterName });
+        }
+      });
 
-        const targetMonthsCount = targetMonthYear * 12 + targetMonthMonth;
-        const dueMonthsCount = nextDueDateYear * 12 + nextDueDateMonth;
+      if (dueContacts.length === 0) return;
 
-        if (dueMonthsCount <= targetMonthsCount) {
-          let suggestedDate = new Date(nextMeetingDueDate.getTime());
-          if (dueMonthsCount < targetMonthsCount) {
-            suggestedDate = new Date(targetMonthStartDate.getTime());
-            suggestedDate.setDate(suggestedDate.getDate() + ((3 + 7 - suggestedDate.getDay()) % 7 || 7));
-          } else {
-            const day = suggestedDate.getDay();
-            if (day === 0) {
-              suggestedDate.setDate(suggestedDate.getDate() + 1);
-            } else if (day === 6) {
-              suggestedDate.setDate(suggestedDate.getDate() - 1);
-            }
+      // Group due contacts by geographic cluster
+      const clusters: Record<string, typeof dueContacts> = {};
+      dueContacts.forEach((item) => {
+        if (!clusters[item.clusterKey]) clusters[item.clusterKey] = [];
+        clusters[item.clusterKey].push(item);
+      });
+
+      // Find available business days (Monday-Friday) in target month
+      const daysInMonth = new Date(year, monthIdx + 1, 0).getDate();
+      const businessDays: number[] = [];
+      const startDay = mOffset === 0 ? Math.max(1, now.getDate() + 1) : 1;
+
+      for (let day = startDay; day <= daysInMonth; day++) {
+        const d = new Date(year, monthIdx, day);
+        const dayOfWeek = d.getDay(); // 0 = Sun, 6 = Sat
+        if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+          businessDays.push(day);
+        }
+      }
+      if (businessDays.length === 0) {
+        businessDays.push(Math.min(15, daysInMonth));
+      }
+
+      // Candidate standard time slots for visits
+      const timeSlots = [
+        { hour: 9, minute: 30 },
+        { hour: 11, minute: 30 },
+        { hour: 14, minute: 0 },
+        { hour: 15, minute: 30 },
+      ];
+
+      // Assign each cluster to an available day
+      let dayIndex = 0;
+      Object.keys(clusters).forEach((cKey) => {
+        const clusterItems = clusters[cKey];
+        const clusterName = clusterItems[0].clusterName;
+        const linkedNames = clusterItems.map((ci) => ci.contact.name);
+
+        // Pick assigned business day for this cluster
+        const assignedDay = businessDays[dayIndex % businessDays.length];
+        dayIndex = (dayIndex + 1) % businessDays.length;
+
+        clusterItems.forEach((ci, slotIdx) => {
+          const slot = timeSlots[slotIdx % timeSlots.length];
+          const scheduledDate = new Date(year, monthIdx, assignedDay, slot.hour, slot.minute, 0);
+
+          // If current month and slot is in the past, push forward by a few days
+          if (mOffset === 0 && scheduledDate.getTime() < now.getTime()) {
+            scheduledDate.setDate(Math.min(daysInMonth, now.getDate() + 2 + slotIdx));
+            const dow = scheduledDate.getDay();
+            if (dow === 0) scheduledDate.setDate(scheduledDate.getDate() + 1);
+            if (dow === 6) scheduledDate.setDate(scheduledDate.getDate() + 2);
           }
-          suggestedDate.setHours(10, 0, 0, 0);
 
           const newSuggestion: Meeting = {
-            id: `suggested-${contact.id}-${targetMonth}`,
-            contactId: contact.id,
-            contactName: contact.name,
-            companyId: contact.companyId,
-            companyName: contact.companyName,
-            salespersonId: contact.assignedSalespersonId || 'sales-uid',
-            month: targetMonth,
+            id: `suggested-${ci.contact.id}-${monthStr}`,
+            contactId: ci.contact.id,
+            contactName: ci.contact.name,
+            companyId: ci.contact.companyId,
+            companyName: ci.contact.companyName,
+            salespersonId: salespersonId,
+            month: monthStr,
             status: 'suggested',
             outcome: '',
             comments: '',
-            whyContext: `Forecasted: No touchpoint with ${contact.name} in ${daysSinceLastMeeting} days prior to ${targetMonth} (Tier ${contact.tier}).`,
-            scheduledAt: suggestedDate.toISOString(),
+            whyContext: `Suggested: No touchpoint with ${ci.contact.name} in ${ci.daysSince} days (Tier ${ci.contact.tier}). ${
+              clusterItems.length > 1
+                ? `Grouped with ${linkedNames.filter((n) => n !== ci.contact.name).join(', ')} in ${clusterName}.`
+                : `Located in ${clusterName}.`
+            }`,
+            clusterInfo: {
+              clusterKey: cKey,
+              clusterName: clusterName,
+              clusterCount: clusterItems.length,
+              linkedContactNames: linkedNames.filter((n) => n !== ci.contact.name),
+            },
+            scheduledAt: scheduledDate.toISOString(),
             completedAt: null,
             createdAt: now.toISOString(),
             updatedAt: now.toISOString(),
@@ -668,24 +823,10 @@ export const useMeetingStore = create<MeetingState>((set, get) => ({
 
           meetingsList.push(newSuggestion);
           updated = true;
-        }
+        });
       });
     });
+  });
 
-    if (updated) {
-      if (isFirebaseConfigured && db) {
-        const newSuggestionsOnly = meetingsList.filter(m => m.id.startsWith('suggested-') && !get().meetings.some(om => om.id === m.id));
-        for (const sugg of newSuggestionsOnly) {
-          await addDoc(collection(db!, 'meetings'), {
-            ...sugg,
-            createdAt: new Date(),
-            updatedAt: new Date()
-          });
-        }
-      } else {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(meetingsList));
-        set({ meetings: meetingsList });
-      }
-    }
-  },
-}));
+  return { updatedMeetings: meetingsList, hasChanges: updated };
+}
