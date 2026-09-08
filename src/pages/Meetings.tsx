@@ -6,6 +6,7 @@ import { useCompanyStore } from '../stores/useCompanyStore';
 import { useNoteStore } from '../stores/useNoteStore';
 import { useAuth } from '../context/AuthContext';
 import { useUserStore } from '../stores/useUserStore';
+import { getSalespersonLabel } from '../utils/userHelpers';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { 
@@ -278,7 +279,7 @@ export const Meetings: React.FC = () => {
   // Restrict salesperson viewing via derived resolvedSalespersonId prop
 
   const salespersons = users.length > 0
-    ? users.map(u => ({ uid: u.uid, name: u.displayName }))
+    ? users.map(u => ({ uid: u.uid, name: getSalespersonLabel(users, u.uid) }))
     : [
         { uid: 'sales-uid', name: 'John Salesperson' },
         { uid: 'admin-uid', name: 'Admin User' }

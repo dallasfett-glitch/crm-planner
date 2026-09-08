@@ -3,11 +3,13 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { useContactStore, type Contact } from '../stores/useContactStore';
 import { useCompanyStore } from '../stores/useCompanyStore';
+import { useUserStore } from '../stores/useUserStore';
 import { useAuth } from '../context/AuthContext';
 import { Plus, Search, User, Mail, Phone, Building2, Edit, Trash2, X, AlertCircle, MapPin, Loader2 } from 'lucide-react';
 import { AddressForm } from '../components/AddressForm';
 import { COUNTRY_STATES } from '../utils/addressConstants';
 import { geocodeStructuredAddress, type GeocodingMatch } from '../utils/geocoding';
+import { getSalespersonLabel, getActiveSalespeople } from '../utils/userHelpers';
 
 type ContactSaveData = Omit<Contact, 'id' | 'createdAt' | 'updatedAt'>;
 
@@ -24,6 +26,7 @@ export const Contacts: React.FC = () => {
 
   const companies = useCompanyStore(state => state.companies);
   const initCompanies = useCompanyStore(state => state.initialize);
+  const users = useUserStore(state => state.users);
 
   useEffect(() => {
     const unsubComp = initCompanies();
@@ -556,8 +559,15 @@ export const Contacts: React.FC = () => {
                       className="w-full bg-crm-bg border border-crm-border focus:border-primary rounded-xl px-4 py-2.5 text-sm text-crm-text outline-none transition cursor-pointer"
                       required
                     >
-                      <option value="John Salesperson">John Salesperson</option>
-                      <option value="Admin User">Admin User</option>
+                      {getActiveSalespeople(users).map((u) => (
+                        <option key={u.uid} value={u.displayName}>
+                          {u.displayName}
+                        </option>
+                      ))}
+                      {/* Fallback option if primaryOwner is set to an inactive user or non-matching name */}
+                      {primaryOwner && !getActiveSalespeople(users).some((u) => u.displayName === primaryOwner) && (
+                        <option value={primaryOwner}>{getSalespersonLabel(users, primaryOwner)}</option>
+                      )}
                     </select>
                   </div>
                 </div>

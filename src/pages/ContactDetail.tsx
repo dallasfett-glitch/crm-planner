@@ -4,7 +4,9 @@ import { useContactStore } from '../stores/useContactStore';
 import { useCompanyStore } from '../stores/useCompanyStore';
 import { useNoteStore } from '../stores/useNoteStore';
 import { useMeetingStore } from '../stores/useMeetingStore';
+import { useUserStore } from '../stores/useUserStore';
 import { useAuth } from '../context/AuthContext';
+import { getSalespersonLabel } from '../utils/userHelpers';
 import { 
   User, 
   Building2, 
@@ -31,6 +33,7 @@ export const ContactDetail: React.FC = () => {
   const notes = useNoteStore(state => state.notes);
   const meetings = useMeetingStore(state => state.meetings);
   const companies = useCompanyStore(state => state.companies);
+  const users = useUserStore(state => state.users);
 
   const initContacts = useContactStore(state => state.initialize);
   const initNotes = useNoteStore(state => state.initialize);
@@ -155,7 +158,7 @@ export const ContactDetail: React.FC = () => {
       id: m.id,
       type: 'meeting' as const,
       date: m.completedAt || m.scheduledAt,
-      salespersonName: 'Sales Rep',
+      salespersonName: getSalespersonLabel(users, m.salespersonId),
       content: m.comments || 'Touchpoint meeting logged.',
       extra: m.outcome,
     })),
@@ -163,7 +166,7 @@ export const ContactDetail: React.FC = () => {
       id: n.id,
       type: 'note' as const,
       date: n.createdAt,
-      salespersonName: n.createdByName || 'Sales Representative',
+      salespersonName: getSalespersonLabel(users, n.createdBy || n.createdByName),
       content: n.content,
     }))
   ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());

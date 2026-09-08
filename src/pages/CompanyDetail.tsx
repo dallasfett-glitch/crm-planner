@@ -5,7 +5,9 @@ import { useContactStore } from '../stores/useContactStore';
 import { useDealStore } from '../stores/useDealStore';
 import { useNoteStore } from '../stores/useNoteStore';
 import { useMeetingStore } from '../stores/useMeetingStore';
+import { useUserStore } from '../stores/useUserStore';
 import { useAuth } from '../context/AuthContext';
+import { getSalespersonLabel } from '../utils/userHelpers';
 import { 
   Building2, 
   Globe, 
@@ -141,22 +143,23 @@ export const CompanyDetail: React.FC = () => {
   }
 
   // Filter associated assets
+  const users = useUserStore(state => state.users);
   const companyContacts = contacts.filter(c => c.companyId === id);
   const companyDeals = deals.filter(d => d.companyId === id);
   
   // Staged / associated contact IDs for lookup
-  const contactIds = companyContacts.map(c => c.id);
+  const contactIdSet = new Set(companyContacts.map(c => c.id));
 
   // Group completed meetings for company and its contacts
   const associatedMeetings = meetings.filter(m => 
-    (m.companyId === id || contactIds.includes(m.contactId)) && 
+    (m.companyId === id || contactIdSet.has(m.contactId)) && 
     m.status === 'completed'
   );
 
-  // Group notes for company and its contacts
+  // Direct notes on company PLUS notes attached to company's contacts
   const associatedNotes = notes.filter(n => 
-    (n.parentId === id && n.parentType === 'company') ||
-    (contactIds.includes(n.parentId) && n.parentType === 'contact')
+    (n.parentType === 'company' && n.parentId === id) ||
+    (n.parentType === 'contact' && contactIdSet.has(n.parentId))
   );
 
   // Map them to a unified format
@@ -175,7 +178,7 @@ export const CompanyDetail: React.FC = () => {
       id: m.id,
       type: 'meeting' as const,
       date: m.completedAt || m.scheduledAt,
-      salespersonName: 'Sales Rep',
+      salespersonName: getSalespersonLabel(users, m.salespersonId),
       content: m.comments || 'Touchpoint meeting logged.',
       extra: m.outcome,
       contactName: m.contactName,
@@ -184,7 +187,7 @@ export const CompanyDetail: React.FC = () => {
       id: n.id,
       type: 'note' as const,
       date: n.createdAt,
-      salespersonName: n.createdByName || 'Sales Representative',
+      salespersonName: getSalespersonLabel(users, n.createdBy || n.createdByName),
       content: n.content,
       contactName: companyContacts.find(c => c.id === n.parentId)?.name,
     }))
@@ -274,7 +277,7 @@ export const CompanyDetail: React.FC = () => {
               }`}>
                 Tier {company.tier || 'B'}
               </span>
-              <span className="text-xs text-crm-muted">&bull; Assigned salesperson: {company.assignedSalespersonId}</span>
+              <span className="text-xs text-crm-muted">&bull; Assigned salesperson: {getSalespersonLabel(users, company.assignedSalespersonId || company.primaryOwner)}</span>
             </div>
           </div>
         </div>
