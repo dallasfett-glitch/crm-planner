@@ -83,6 +83,15 @@ export const AdminUsers: React.FC = () => {
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // Status Filter Tabs State
+  const [statusFilter, setStatusFilter] = useState<'active' | 'archived' | 'all'>('active');
+
+  const filteredUsers = users.filter((u) => {
+    if (statusFilter === 'active') return u.status !== 'deactivated';
+    if (statusFilter === 'archived') return u.status === 'deactivated';
+    return true;
+  });
+
   // Redirect non-admins
   useEffect(() => {
     if (user && user.role !== 'admin') {
@@ -416,6 +425,40 @@ export const AdminUsers: React.FC = () => {
         </div>
       )}
 
+      {/* Status Filter Tabs */}
+      <div className="flex items-center space-x-2 border-b border-crm-border/60 pb-3">
+        <button
+          onClick={() => setStatusFilter('active')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+            statusFilter === 'active' 
+              ? 'bg-primary/10 border border-primary text-primary shadow-sm' 
+              : 'text-crm-muted hover:bg-crm-bg hover:text-crm-text border border-transparent'
+          }`}
+        >
+          Active Members ({users.filter(u => u.status !== 'deactivated').length})
+        </button>
+        <button
+          onClick={() => setStatusFilter('archived')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+            statusFilter === 'archived' 
+              ? 'bg-amber-500/10 border border-amber-500 text-amber-500 shadow-sm' 
+              : 'text-crm-muted hover:bg-crm-bg hover:text-crm-text border border-transparent'
+          }`}
+        >
+          Archived / Deactivated ({users.filter(u => u.status === 'deactivated').length})
+        </button>
+        <button
+          onClick={() => setStatusFilter('all')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+            statusFilter === 'all' 
+              ? 'bg-crm-card border border-crm-border text-crm-text shadow-sm' 
+              : 'text-crm-muted hover:bg-crm-bg hover:text-crm-text border border-transparent'
+          }`}
+        >
+          All Users ({users.length})
+        </button>
+      </div>
+
       {/* Users List Table */}
       {loading ? (
         <div className="text-center py-20">
@@ -440,7 +483,7 @@ export const AdminUsers: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-crm-border/60">
-                {users.map((item) => {
+                {filteredUsers.map((item) => {
                   const perms = item.permissions || {
                     canManageDeals: item.role === 'admin',
                     canManageMeetings: true,

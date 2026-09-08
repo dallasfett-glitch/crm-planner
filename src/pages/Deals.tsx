@@ -4,6 +4,8 @@ import { useDealStore } from '../stores/useDealStore';
 import type { DealStage, Deal } from '../stores/useDealStore';
 import { useCompanyStore } from '../stores/useCompanyStore';
 import { useContactStore } from '../stores/useContactStore';
+import { useUserStore } from '../stores/useUserStore';
+import { getSalespersonLabel, getActiveSalespeople } from '../utils/userHelpers';
 import { useAuth } from '../context/AuthContext';
 import { 
   Plus, 
@@ -38,6 +40,16 @@ export const Deals: React.FC = () => {
 
   const companies = useCompanyStore(state => state.companies);
   const contacts = useContactStore(state => state.contacts);
+
+  const users = useUserStore(state => state.users);
+  const initializeUsers = useUserStore(state => state.initialize);
+
+  useEffect(() => {
+    const unsub = initializeUsers();
+    return () => unsub();
+  }, [initializeUsers]);
+
+  const activeSalespeople = getActiveSalespeople(users);
 
   const initCompanies = useCompanyStore(state => state.initialize);
   const initContacts = useContactStore(state => state.initialize);
@@ -246,7 +258,7 @@ export const Deals: React.FC = () => {
                               </p>
                               <p className="text-[10px] text-primary/80 dark:text-primary-hover/90 mt-1 font-semibold flex items-center space-x-1">
                                 <span className="w-1.5 h-1.5 rounded-full bg-primary inline-block"></span>
-                                <span>Owner: {deal.assignedSalespersonId === 'admin-uid' ? 'Admin User' : 'John Salesperson'}</span>
+                                <span>Owner: {getSalespersonLabel(users, deal.assignedSalespersonId)}</span>
                               </p>
                             </div>
                             {canManageDeals && (
@@ -420,8 +432,11 @@ export const Deals: React.FC = () => {
                       className="w-full bg-crm-bg border border-crm-border focus:border-primary rounded-xl px-4 py-2.5 text-sm text-crm-text outline-none transition cursor-pointer"
                       required
                     >
-                      <option value="sales-uid">John Salesperson</option>
-                      <option value="admin-uid">Admin User</option>
+                      {activeSalespeople.map((u) => (
+                        <option key={u.uid} value={u.uid}>
+                          {u.displayName}
+                        </option>
+                      ))}
                     </select>
                   </div>
                 </div>

@@ -14,6 +14,7 @@ interface UserStoreState {
   updateUser: (uid: string, userData: Partial<UserProfile>) => Promise<void>;
   toggleUserStatus: (uid: string, currentStatus?: 'active' | 'deactivated') => Promise<void>;
   deleteUser: (uid: string) => Promise<void>;
+  permanentlyDeleteUser: (uid: string) => Promise<void>;
 }
 
 const STORAGE_KEY = 'crm_mock_users';
@@ -250,6 +251,31 @@ export const useUserStore = create<UserStoreState>((set, get) => ({
   },
 
   deleteUser: async (uid) => {
+    if (isFirebaseConfigured && db) {
+      const docRef = doc(db, 'users', uid);
+      await updateDoc(docRef, {
+        status: 'deactivated',
+        updatedAt: new Date(),
+      });
+    } else {
+      const list = get().users.map((u) => {
+        if (u.uid === uid) {
+          return {
+            ...u,
+            status: 'deactivated' as const,
+          };
+        }
+        return u;
+      });
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+      set({ users: list });
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('crm-user-updated'));
+      }
+    }
+  },
+
+  permanentlyDeleteUser: async (uid) => {
     if (isFirebaseConfigured && db) {
       const docRef = doc(db, 'users', uid);
       await deleteDoc(docRef);
