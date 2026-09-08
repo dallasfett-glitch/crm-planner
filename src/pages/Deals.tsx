@@ -15,7 +15,8 @@ import {
   ChevronRight, 
   DollarSign, 
   X, 
-  AlertCircle 
+  AlertCircle,
+  Briefcase
 } from 'lucide-react';
 
 const STAGES: { key: DealStage; label: string; color: string }[] = [
@@ -338,50 +339,59 @@ export const Deals: React.FC = () => {
 
       {/* Deal Modal */}
       {modalOpen && createPortal(
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-xs">
-          <div className="w-full max-w-4xl bg-crm-card border border-crm-border rounded-3xl p-6 shadow-2xl relative text-crm-text animate-fade-in">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-6 bg-slate-950/60 backdrop-blur-sm overflow-y-auto animate-fade-in">
+          <div className="w-full max-w-5xl bg-crm-card border border-crm-border rounded-3xl p-6 md:p-10 shadow-2xl relative text-crm-text my-auto max-h-[90vh] overflow-y-auto scrollbar-thin animate-scale-in">
             <button 
+              type="button"
               onClick={() => setModalOpen(false)}
-              className="absolute top-4 right-4 p-1.5 rounded-lg text-crm-muted hover:text-crm-text hover:bg-crm-bg transition border border-transparent hover:border-crm-border"
+              className="absolute top-6 right-6 p-2 rounded-xl text-crm-muted hover:text-crm-text hover:bg-crm-bg transition border border-transparent hover:border-crm-border"
             >
               <X className="h-5 w-5" />
             </button>
 
-            <h3 className="text-xl font-bold text-crm-text mb-2">
-              {editingId ? 'Edit Deal' : 'Add New Deal'}
-            </h3>
-            <p className="text-xs text-crm-muted mb-6">Enter deal pipeline details</p>
+            <div className="flex items-center space-x-3 mb-6">
+              <div className="p-3.5 rounded-2xl bg-primary/10 text-primary border border-primary/20 shadow-sm">
+                <Briefcase className="h-7 w-7" />
+              </div>
+              <div>
+                <h3 className="text-2xl font-extrabold text-crm-text">
+                  {editingId ? 'Edit Deal Details' : 'Create New Deal Opportunity'}
+                </h3>
+                <p className="text-sm text-crm-muted mt-0.5">Enter deal value, stage, account associations, and salesperson assignment</p>
+              </div>
+            </div>
 
             {formError && (
-              <div className="mb-4 px-4 py-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-500 text-xs flex items-center space-x-2">
-                <AlertCircle className="h-4 w-4 text-rose-500 shrink-0" />
+              <div className="mb-6 px-4 py-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 text-sm font-semibold flex items-center space-x-2.5">
+                <AlertCircle className="h-5 w-5 text-rose-500 shrink-0" />
                 <span>{formError}</span>
               </div>
             )}
 
-            <form onSubmit={handleSave} className="space-y-6">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+            <form onSubmit={handleSave} className="space-y-8">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
                 
                 {/* Left Column: Deal Identity */}
-                <div className="space-y-4">
-                  <h4 className="text-xs font-bold text-primary uppercase tracking-wider">Deal Details</h4>
+                <div className="space-y-5 bg-crm-bg/30 p-6 rounded-2xl border border-crm-border/80">
+                  <h4 className="text-xs font-bold text-primary uppercase tracking-wider border-b border-crm-border/60 pb-2.5">Deal Information</h4>
+                  
                   <div>
-                    <label className="block text-xs font-semibold text-crm-muted uppercase tracking-wider mb-2">Deal Name *</label>
+                    <label className="block text-xs font-bold text-crm-muted uppercase tracking-wider mb-2">Deal Name *</label>
                     <input
                       type="text"
-                      placeholder="e.g. 100 Cybertrucks Fleet"
+                      placeholder="e.g. 100 Cybertrucks Fleet Expansion"
                       value={name}
                       onChange={(e) => setName(e.target.value)}
-                      className="w-full bg-crm-bg border border-crm-border focus:border-primary rounded-xl px-4 py-2.5 text-sm text-crm-text placeholder-crm-muted outline-none transition"
+                      className="w-full bg-crm-bg border border-crm-border focus:border-primary rounded-xl px-4 py-3 text-sm text-crm-text placeholder-crm-muted/60 outline-none transition shadow-xs"
                       required
                     />
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-semibold text-crm-muted uppercase tracking-wider mb-2">Deal Value ($) *</label>
+                      <label className="block text-xs font-bold text-crm-muted uppercase tracking-wider mb-2">Deal Value ($) *</label>
                       <div className="relative">
-                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-crm-muted">
+                        <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-crm-muted">
                           <DollarSign className="h-4 w-4" />
                         </div>
                         <input
@@ -389,17 +399,17 @@ export const Deals: React.FC = () => {
                           placeholder="0"
                           value={value === 0 ? '' : value}
                           onChange={(e) => setValue(Number(e.target.value))}
-                          className="w-full bg-crm-bg border border-crm-border focus:border-primary rounded-xl pl-9 pr-4 py-2.5 text-sm text-crm-text placeholder-crm-muted outline-none transition"
+                          className="w-full bg-crm-bg border border-crm-border focus:border-primary rounded-xl pl-10 pr-4 py-3 text-sm text-crm-text placeholder-crm-muted/60 outline-none transition shadow-xs"
                           required
                         />
                       </div>
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-crm-muted uppercase tracking-wider mb-2">Pipeline Stage</label>
+                      <label className="block text-xs font-bold text-crm-muted uppercase tracking-wider mb-2">Pipeline Stage *</label>
                       <select
                         value={stage}
                         onChange={(e) => setStage(e.target.value as DealStage)}
-                        className="w-full bg-crm-bg border border-crm-border focus:border-primary rounded-xl px-4 py-2.5 text-sm text-crm-text outline-none transition cursor-pointer"
+                        className="w-full bg-crm-bg border border-crm-border focus:border-primary rounded-xl px-4 py-3 text-sm text-crm-text outline-none transition cursor-pointer shadow-xs capitalize"
                       >
                         {STAGES.map(s => (
                           <option key={s.key} value={s.key}>{s.label}</option>
@@ -410,15 +420,16 @@ export const Deals: React.FC = () => {
                 </div>
 
                 {/* Right Column: Account & Stakeholders */}
-                <div className="space-y-4">
-                  <h4 className="text-xs font-bold text-primary uppercase tracking-wider">Associations & Owner</h4>
-                  <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-5 bg-crm-bg/30 p-6 rounded-2xl border border-crm-border/80">
+                  <h4 className="text-xs font-bold text-primary uppercase tracking-wider border-b border-crm-border/60 pb-2.5">Associations & Ownership</h4>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-xs font-semibold text-crm-muted uppercase tracking-wider mb-2">Company Association *</label>
+                      <label className="block text-xs font-bold text-crm-muted uppercase tracking-wider mb-2">Company Association *</label>
                       <select
                         value={companyId}
                         onChange={(e) => handleCompanyChange(e.target.value)}
-                        className="w-full bg-crm-bg border border-crm-border focus:border-primary rounded-xl px-4 py-2.5 text-sm text-crm-text outline-none transition cursor-pointer"
+                        className="w-full bg-crm-bg border border-crm-border focus:border-primary rounded-xl px-4 py-3 text-sm text-crm-text outline-none transition cursor-pointer shadow-xs"
                         required
                       >
                         <option value="" disabled>Select Company</option>
@@ -428,13 +439,13 @@ export const Deals: React.FC = () => {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-crm-muted uppercase tracking-wider mb-2">
+                      <label className="block text-xs font-bold text-crm-muted uppercase tracking-wider mb-2">
                         Primary Contact {availableContacts.length > 0 ? '*' : ''}
                       </label>
                       <select
                         value={contactId}
                         onChange={(e) => setContactId(e.target.value)}
-                        className="w-full bg-crm-bg border border-crm-border focus:border-primary rounded-xl px-4 py-2.5 text-sm text-crm-text outline-none transition cursor-pointer disabled:opacity-50"
+                        className="w-full bg-crm-bg border border-crm-border focus:border-primary rounded-xl px-4 py-3 text-sm text-crm-text outline-none transition cursor-pointer disabled:opacity-50 shadow-xs"
                         required={availableContacts.length > 0}
                         disabled={!companyId}
                       >
@@ -450,11 +461,11 @@ export const Deals: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-crm-muted uppercase tracking-wider mb-2">Assigned Salesperson *</label>
+                    <label className="block text-xs font-bold text-crm-muted uppercase tracking-wider mb-2">Assigned Salesperson *</label>
                     <select
                       value={assignedSalespersonId}
                       onChange={(e) => setAssignedSalespersonId(e.target.value)}
-                      className="w-full bg-crm-bg border border-crm-border focus:border-primary rounded-xl px-4 py-2.5 text-sm text-crm-text outline-none transition cursor-pointer"
+                      className="w-full bg-crm-bg border border-crm-border focus:border-primary rounded-xl px-4 py-3 text-sm text-crm-text outline-none transition cursor-pointer shadow-xs"
                       required
                     >
                       {activeSalespeople.map((u) => (
@@ -467,17 +478,17 @@ export const Deals: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex space-x-3 mt-6 border-t border-crm-border/60 pt-4">
+              <div className="flex space-x-4 pt-4 border-t border-crm-border/60">
                 <button
                   type="button"
                   onClick={() => setModalOpen(false)}
-                  className="flex-1 bg-crm-bg hover:bg-crm-border text-crm-muted font-bold py-2.5 rounded-xl text-sm border border-crm-border transition shadow-sm"
+                  className="flex-1 bg-crm-bg hover:bg-crm-border text-crm-muted font-bold py-3 rounded-xl text-sm border border-crm-border transition shadow-sm"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 bg-primary hover:bg-primary-hover text-white font-bold py-2.5 rounded-xl text-sm transition shadow-lg shadow-primary/10"
+                  className="flex-1 bg-primary hover:bg-primary-hover text-white font-bold py-3 rounded-xl text-sm transition shadow-lg shadow-primary/15"
                 >
                   {editingId ? 'Save Changes' : 'Create Deal'}
                 </button>
