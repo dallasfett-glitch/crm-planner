@@ -3,6 +3,7 @@ import {
   onAuthStateChanged, 
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
+  sendPasswordResetEmail,
   signOut as fbSignOut
 } from 'firebase/auth';
 import type { User as FirebaseUser } from 'firebase/auth';
@@ -31,6 +32,7 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, displayName: string, role: 'admin' | 'salesperson') => Promise<void>;
   signOut: () => Promise<void>;
+  sendPasswordResetLink: (email: string) => Promise<void>;
   isMockMode: boolean;
 }
 
@@ -269,6 +271,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const sendPasswordResetLink = async (targetEmail: string) => {
+    if (isFirebaseConfigured && auth) {
+      await sendPasswordResetEmail(auth, targetEmail.trim());
+    } else {
+      console.log(`[Demo Mock Mode] Password reset / invitation link sent to ${targetEmail}`);
+    }
+  };
+
   const signOut = async () => {
     if (isFirebaseConfigured && auth) {
       await fbSignOut(auth);
@@ -279,7 +289,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, signUp, signOut, isMockMode: !isFirebaseConfigured }}>
+    <AuthContext.Provider value={{ user, loading, signIn, signUp, signOut, sendPasswordResetLink, isMockMode: !isFirebaseConfigured }}>
       {children}
     </AuthContext.Provider>
   );

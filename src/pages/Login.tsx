@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { AlertCircle, Key, Lock, Mail, LogIn } from 'lucide-react';
+import { AlertCircle, CheckCircle, Key, Lock, Mail, LogIn } from 'lucide-react';
 
 export const Login: React.FC = () => {
-  const { signIn, isMockMode } = useAuth();
+  const { signIn, sendPasswordResetLink, isMockMode } = useAuth();
   const navigate = useNavigate();
 
   // Logo States
@@ -17,11 +17,14 @@ export const Login: React.FC = () => {
   const [password, setPassword] = useState('');
 
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setSuccess(null);
     setLoading(true);
 
     try {
@@ -31,6 +34,24 @@ export const Login: React.FC = () => {
       setError(err instanceof Error ? err.message : 'An error occurred during authentication.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSendReset = async () => {
+    if (!email.trim()) {
+      setError('Please enter your email address above to receive your password setup invitation.');
+      return;
+    }
+    setError(null);
+    setSuccess(null);
+    setResetLoading(true);
+    try {
+      await sendPasswordResetLink(email.trim());
+      setSuccess(`Password setup email sent to ${email.trim()}! Please check your inbox.`);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to send password setup email.');
+    } finally {
+      setResetLoading(false);
     }
   };
 
@@ -58,7 +79,14 @@ export const Login: React.FC = () => {
           </p>
         </div>
 
-        {/* Error Message */}
+        {/* Success / Error Messages */}
+        {success && (
+          <div className="mb-6 px-4 py-3 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-sm flex items-center space-x-2">
+            <CheckCircle className="h-5 w-5 text-emerald-500 shrink-0" />
+            <span>{success}</span>
+          </div>
+        )}
+
         {error && (
           <div className="mb-6 px-4 py-3 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-600 dark:text-rose-400 text-sm flex items-center space-x-2">
             <AlertCircle className="h-5 w-5 text-rose-500 shrink-0" />
@@ -88,9 +116,19 @@ export const Login: React.FC = () => {
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-crm-muted uppercase tracking-wider mb-2">
-              Password
-            </label>
+            <div className="flex justify-between items-center mb-2">
+              <label className="block text-xs font-semibold text-crm-muted uppercase tracking-wider">
+                Password
+              </label>
+              <button
+                type="button"
+                onClick={handleSendReset}
+                disabled={resetLoading}
+                className="text-xs text-primary hover:underline font-semibold cursor-pointer disabled:opacity-50"
+              >
+                {resetLoading ? 'Sending link...' : 'First time or forgot password?'}
+              </button>
+            </div>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-crm-muted">
                 <Lock className="h-4 w-4" />

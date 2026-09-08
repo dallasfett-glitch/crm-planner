@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 
 export const AdminUsers: React.FC = () => {
-  const { user } = useAuth();
+  const { user, sendPasswordResetLink } = useAuth();
   const navigate = useNavigate();
   
   const users = useUserStore(state => state.users);
@@ -99,8 +99,9 @@ export const AdminUsers: React.FC = () => {
     }
 
     try {
+      const targetEmail = email.trim();
       await addUser({
-        email: email.trim(),
+        email: targetEmail,
         displayName: displayName.trim(),
         role,
         monthly_meeting_quota: quotaNum,
@@ -111,11 +112,36 @@ export const AdminUsers: React.FC = () => {
           canViewAllSchedules,
         }
       });
-      setSuccessMsg(`User "${displayName}" created successfully.`);
+
+      let inviteSent = false;
+      try {
+        await sendPasswordResetLink(targetEmail);
+        inviteSent = true;
+      } catch (inviteErr) {
+        console.warn('Could not automatically send invitation email:', inviteErr);
+      }
+
+      setSuccessMsg(
+        inviteSent 
+          ? `User "${displayName}" created! Invitation & password setup email sent to ${targetEmail}.`
+          : `User "${displayName}" created successfully. You can send an invite link anytime.`
+      );
       setModalOpen(false);
-      setTimeout(() => setSuccessMsg(null), 3000);
+      setTimeout(() => setSuccessMsg(null), 5000);
     } catch (err: unknown) {
       setErrorMsg(err instanceof Error ? err.message : 'Error occurred while creating user.');
+    }
+  };
+
+  const handleResendInvite = async (targetEmail: string) => {
+    setErrorMsg(null);
+    setSuccessMsg(null);
+    try {
+      await sendPasswordResetLink(targetEmail);
+      setSuccessMsg(`Invitation & password setup email sent to ${targetEmail}.`);
+      setTimeout(() => setSuccessMsg(null), 4000);
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : `Failed to send invitation to ${targetEmail}.`);
     }
   };
 
@@ -400,8 +426,15 @@ export const AdminUsers: React.FC = () => {
                       <td className="py-4 px-6 text-right">
                         <div className="flex items-center justify-end space-x-1">
                           <button
+                            onClick={() => handleResendInvite(item.email)}
+                            className="p-1.5 rounded-lg text-crm-muted hover:text-cyan-500 hover:bg-crm-bg border border-transparent hover:border-crm-border transition shadow-sm cursor-pointer"
+                            title="Send / Resend Password Setup Invitation"
+                          >
+                            <Mail className="h-4 w-4" />
+                          </button>
+                          <button
                             onClick={() => openEditModal(item)}
-                            className="p-1.5 rounded-lg text-crm-muted hover:text-primary hover:bg-crm-bg border border-transparent hover:border-crm-border transition shadow-sm"
+                            className="p-1.5 rounded-lg text-crm-muted hover:text-primary hover:bg-crm-bg border border-transparent hover:border-crm-border transition shadow-sm cursor-pointer"
                             title="Edit User Target Quota"
                           >
                             <Edit className="h-4 w-4" />
@@ -409,7 +442,7 @@ export const AdminUsers: React.FC = () => {
                           <button
                             onClick={() => setDeleteConfirmUser(item)}
                             disabled={item.uid === user?.uid}
-                            className="p-1.5 rounded-lg text-crm-muted hover:text-rose-500 hover:bg-crm-bg border border-transparent hover:border-crm-border transition shadow-sm disabled:opacity-30 disabled:cursor-not-allowed"
+                            className="p-1.5 rounded-lg text-crm-muted hover:text-rose-500 hover:bg-crm-bg border border-transparent hover:border-crm-border transition shadow-sm disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
                             title={item.uid === user?.uid ? "You cannot delete your own account" : "Delete User"}
                           >
                             <Trash2 className="h-4 w-4" />
