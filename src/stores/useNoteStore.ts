@@ -29,7 +29,7 @@ const SEED_NOTES: Note[] = [
     parentId: 'cont-1',
     parentType: 'contact',
     createdBy: 'sales-uid',
-    createdByName: 'John Salesperson',
+    createdByName: 'Rebecca Fett',
     createdAt: new Date(Date.now() - 3600000 * 24 * 3).toISOString(), // 3 days ago
   },
   {
@@ -38,7 +38,7 @@ const SEED_NOTES: Note[] = [
     parentId: 'comp-2',
     parentType: 'company',
     createdBy: 'sales-uid',
-    createdByName: 'John Salesperson',
+    createdByName: 'Rebecca Fett',
     createdAt: new Date(Date.now() - 3600000 * 24 * 1).toISOString(), // 1 day ago
   },
   {
@@ -65,9 +65,14 @@ export const useNoteStore = create<NoteState>((set, get) => ({
       const unsubscribe = onSnapshot(q, (snapshot) => {
         const noteList = snapshot.docs.map((docSnap) => {
           const data = docSnap.data();
+          const createdByName = data.createdByName === 'John Salesperson' ? 'Rebecca Fett' : data.createdByName;
+          if (data.createdByName === 'John Salesperson') {
+            updateDoc(doc(db!, 'notes', docSnap.id), { createdByName: 'Rebecca Fett' }).catch(console.error);
+          }
           return {
             id: docSnap.id,
             ...data,
+            createdByName,
             createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.createdAt,
           } as Note;
         });
@@ -81,7 +86,19 @@ export const useNoteStore = create<NoteState>((set, get) => ({
       const loadLocal = () => {
         const stored = localStorage.getItem(STORAGE_KEY);
         if (stored) {
-          set({ notes: JSON.parse(stored), loading: false, initialized: true });
+          const parsed = JSON.parse(stored) as Note[];
+          let updated = false;
+          const list = parsed.map((n) => {
+            if (n.createdByName === 'John Salesperson') {
+              updated = true;
+              return { ...n, createdByName: 'Rebecca Fett' };
+            }
+            return n;
+          });
+          if (updated) {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+          }
+          set({ notes: list, loading: false, initialized: true });
         } else {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(SEED_NOTES));
           set({ notes: SEED_NOTES, loading: false, initialized: true });

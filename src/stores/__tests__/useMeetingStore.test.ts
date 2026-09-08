@@ -60,7 +60,7 @@ describe('useMeetingStore - Cadence & Scheduling Logic', () => {
         companyId: 'comp-a',
         companyName: 'Company A',
         assignedSalespersonId: 'sales-uid',
-        primaryOwner: 'John Salesperson',
+        primaryOwner: 'Rebecca Fett',
         createdAt: new Date(now.getTime() - 1000 * 60 * 60 * 24 * 50).toISOString(),
         updatedAt: new Date().toISOString(),
       },
@@ -75,7 +75,7 @@ describe('useMeetingStore - Cadence & Scheduling Logic', () => {
         companyId: 'comp-b',
         companyName: 'Company B',
         assignedSalespersonId: 'sales-uid',
-        primaryOwner: 'John Salesperson',
+        primaryOwner: 'Rebecca Fett',
         createdAt: new Date(now.getTime() - 1000 * 60 * 60 * 24 * 50).toISOString(),
         updatedAt: new Date().toISOString(),
       }

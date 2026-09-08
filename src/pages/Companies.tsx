@@ -52,7 +52,7 @@ export const Companies: React.FC = () => {
   const [latitude, setLatitude] = useState<number | undefined>(undefined);
   const [longitude, setLongitude] = useState<number | undefined>(undefined);
   const [tier, setTier] = useState<'A' | 'B' | 'C'>('B');
-  const [primaryOwner, setPrimaryOwner] = useState('John Salesperson');
+  const [primaryOwner, setPrimaryOwner] = useState('Rebecca Fett');
 
   // Pre-save geocoding intercept and disambiguation modal states
   const [disambiguationOpen, setDisambiguationOpen] = useState(false);
@@ -93,7 +93,7 @@ export const Companies: React.FC = () => {
     setLatitude(undefined);
     setLongitude(undefined);
     setTier('B');
-    setPrimaryOwner('John Salesperson');
+    setPrimaryOwner('Rebecca Fett');
     setStagedContacts([]);
     setCName('');
     setCEmail('');
@@ -120,7 +120,7 @@ export const Companies: React.FC = () => {
     setLatitude(c.latitude);
     setLongitude(c.longitude);
     setTier(c.tier || 'B');
-    setPrimaryOwner(c.primaryOwner || 'John Salesperson');
+    setPrimaryOwner(c.primaryOwner === 'John Salesperson' ? 'Rebecca Fett' : (c.primaryOwner || 'Rebecca Fett'));
     setStagedContacts([]);
     setFormError(null);
     setModalOpen(true);

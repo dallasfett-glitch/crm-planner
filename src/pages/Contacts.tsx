@@ -45,7 +45,7 @@ export const Contacts: React.FC = () => {
   const [status, setStatus] = useState<'prospect' | 'client' | 'inactive'>('prospect');
   const [tier, setTier] = useState<'A' | 'B' | 'C'>('B'); // Default Tier
   const [companyId, setCompanyId] = useState('');
-  const [primaryOwner, setPrimaryOwner] = useState('John Salesperson');
+  const [primaryOwner, setPrimaryOwner] = useState('Rebecca Fett');
   const [street, setStreet] = useState('');
   const [suburb, setSuburb] = useState('');
   const [state, setState] = useState('');
@@ -79,7 +79,7 @@ export const Contacts: React.FC = () => {
     setRole('');
     setStatus('prospect');
     setTier('B');
-    setPrimaryOwner('John Salesperson');
+    setPrimaryOwner('Rebecca Fett');
     setStreet('');
     setSuburb('');
     setState('');
@@ -103,7 +103,7 @@ export const Contacts: React.FC = () => {
     setStatus(c.status);
     setTier(c.tier || 'B');
     setCompanyId(c.companyId);
-    setPrimaryOwner(c.primaryOwner || 'John Salesperson');
+    setPrimaryOwner(c.primaryOwner === 'John Salesperson' ? 'Rebecca Fett' : (c.primaryOwner || 'Rebecca Fett'));
     setStreet(c.street || '');
     setSuburb(c.suburb || '');
     setState(c.state || '');

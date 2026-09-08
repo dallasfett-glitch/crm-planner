@@ -53,7 +53,7 @@ const defaultMockUsers: UserProfile[] = [
   {
     uid: 'sales-uid',
     email: 'sales@crmplanner.com',
-    displayName: 'John Salesperson',
+    displayName: 'Rebecca Fett',
     role: 'salesperson',
     monthly_meeting_quota: 20,
   }
@@ -65,8 +65,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Initialize mock users in localStorage if they don't exist
   useEffect(() => {
-    if (!localStorage.getItem(MOCK_USERS_KEY)) {
+    const stored = localStorage.getItem(MOCK_USERS_KEY);
+    if (!stored) {
       localStorage.setItem(MOCK_USERS_KEY, JSON.stringify(defaultMockUsers));
+    } else {
+      try {
+        const parsed = JSON.parse(stored) as UserProfile[];
+        let updated = false;
+        const list = parsed.map((u) => {
+          if (u.displayName === 'John Salesperson') {
+            updated = true;
+            return { ...u, displayName: 'Rebecca Fett' };
+          }
+          return u;
+        });
+        if (updated) {
+          localStorage.setItem(MOCK_USERS_KEY, JSON.stringify(list));
+        }
+      } catch (err) {
+        console.error(err);
+      }
     }
   }, []);
 

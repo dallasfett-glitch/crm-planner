@@ -73,7 +73,7 @@ export const Compliance: React.FC = () => {
       list.push({ uid: 'admin-uid', email: 'admin@crmplanner.com', displayName: 'Admin User', role: 'admin' });
     }
     if (!list.some(u => u.uid === 'sales-uid')) {
-      list.push({ uid: 'sales-uid', email: 'sales@crmplanner.com', displayName: 'John Salesperson', role: 'salesperson' });
+      list.push({ uid: 'sales-uid', email: 'sales@crmplanner.com', displayName: 'Rebecca Fett', role: 'salesperson' });
     }
 
     // Filter to only those with salesperson or admin roles who have logged meetings or exist in profile database

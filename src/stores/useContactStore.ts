@@ -48,7 +48,7 @@ const SEED_CONTACTS: Contact[] = [
     companyId: 'comp-1',
     companyName: 'Tesla',
     assignedSalespersonId: 'sales-uid',
-    primaryOwner: 'John Salesperson',
+    primaryOwner: 'Rebecca Fett',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   },
@@ -63,7 +63,7 @@ const SEED_CONTACTS: Contact[] = [
     companyId: 'comp-2',
     companyName: 'SpaceX',
     assignedSalespersonId: 'sales-uid',
-    primaryOwner: 'John Salesperson',
+    primaryOwner: 'Rebecca Fett',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   },
@@ -93,7 +93,7 @@ const SEED_CONTACTS: Contact[] = [
     companyId: 'comp-4',
     companyName: 'Google',
     assignedSalespersonId: 'sales-uid',
-    primaryOwner: 'John Salesperson',
+    primaryOwner: 'Rebecca Fett',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   }
@@ -120,9 +120,14 @@ export const useContactStore = create<ContactState>((set, get) => ({
 
         const contactList = snapshot.docs.map((docSnap) => {
           const data = docSnap.data();
+          const primaryOwner = data.primaryOwner === 'John Salesperson' ? 'Rebecca Fett' : (data.primaryOwner || 'Rebecca Fett');
+          if (data.primaryOwner === 'John Salesperson') {
+            updateDoc(doc(db!, 'contacts', docSnap.id), { primaryOwner: 'Rebecca Fett' }).catch(console.error);
+          }
           return {
             id: docSnap.id,
             ...data,
+            primaryOwner,
             createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : data.createdAt,
             updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate().toISOString() : data.updatedAt,
           } as Contact;
@@ -137,7 +142,19 @@ export const useContactStore = create<ContactState>((set, get) => ({
       const loadLocal = () => {
         const stored = localStorage.getItem(STORAGE_KEY);
         if (stored) {
-          set({ contacts: JSON.parse(stored), loading: false, initialized: true });
+          const parsed = JSON.parse(stored) as Contact[];
+          let updated = false;
+          const list = parsed.map((c) => {
+            if (c.primaryOwner === 'John Salesperson' || !c.primaryOwner) {
+              updated = true;
+              return { ...c, primaryOwner: 'Rebecca Fett' };
+            }
+            return c;
+          });
+          if (updated) {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+          }
+          set({ contacts: list, loading: false, initialized: true });
         } else {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(SEED_CONTACTS));
           set({ contacts: SEED_CONTACTS, loading: false, initialized: true });

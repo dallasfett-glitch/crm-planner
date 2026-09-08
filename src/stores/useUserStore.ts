@@ -35,7 +35,7 @@ const DEFAULT_MOCK_USERS: UserProfile[] = [
   {
     uid: 'sales-uid',
     email: 'sales@crmplanner.com',
-    displayName: 'John Salesperson',
+    displayName: 'Rebecca Fett',
     role: 'salesperson',
     monthly_meeting_quota: 20,
     permissions: {
@@ -59,9 +59,14 @@ export const useUserStore = create<UserStoreState>((set, get) => ({
       const unsubscribe = onSnapshot(collection(db, 'users'), (snapshot) => {
         const userList = snapshot.docs.map((docSnap) => {
           const data = docSnap.data();
+          const displayName = data.displayName === 'John Salesperson' ? 'Rebecca Fett' : (data.displayName || 'Rebecca Fett');
+          if (data.displayName === 'John Salesperson') {
+            updateDoc(doc(db, 'users', docSnap.id), { displayName: 'Rebecca Fett' }).catch(console.error);
+          }
           return {
             uid: docSnap.id,
             ...data,
+            displayName,
           } as UserProfile;
         });
         set({ users: userList, loading: false, initialized: true });
@@ -74,7 +79,19 @@ export const useUserStore = create<UserStoreState>((set, get) => ({
       const loadLocal = () => {
         const stored = localStorage.getItem(STORAGE_KEY);
         if (stored) {
-          set({ users: JSON.parse(stored), loading: false, initialized: true });
+          const parsed = JSON.parse(stored) as UserProfile[];
+          let updated = false;
+          const list = parsed.map((u) => {
+            if (u.displayName === 'John Salesperson') {
+              updated = true;
+              return { ...u, displayName: 'Rebecca Fett' };
+            }
+            return u;
+          });
+          if (updated) {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+          }
+          set({ users: list, loading: false, initialized: true });
         } else {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_MOCK_USERS));
           set({ users: DEFAULT_MOCK_USERS, loading: false, initialized: true });

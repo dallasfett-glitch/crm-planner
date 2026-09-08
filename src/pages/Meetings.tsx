@@ -281,7 +281,7 @@ export const Meetings: React.FC = () => {
   const salespersons = users.length > 0
     ? users.map(u => ({ uid: u.uid, name: getSalespersonLabel(users, u.uid) }))
     : [
-        { uid: 'sales-uid', name: 'John Salesperson' },
+        { uid: 'sales-uid', name: 'Rebecca Fett' },
         { uid: 'admin-uid', name: 'Admin User' }
       ];
 
@@ -991,7 +991,7 @@ export const Meetings: React.FC = () => {
     const cName = meeting.contactName || 'Client';
     const notes = meeting.comments || 'our meeting';
     const outcomeStr = meeting.outcome || '';
-    const salespersonName = 'John Salesperson';
+    const salespersonName = user?.displayName || 'Rebecca Fett';
     
     let opening: string;
     let body: string;
