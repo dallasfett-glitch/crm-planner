@@ -25,12 +25,19 @@ service cloud.firestore {
       );
     }
 
+    function isInitialAdminEmail() {
+      return isAuthenticated() && request.auth.token.email != null && (
+        request.auth.token.email.matches('(?i)dallasf@connx\\.com\\.au') ||
+        request.auth.token.email.matches('(?i)admin@crmplanner\\.com') ||
+        request.auth.token.email.matches('(?i)admin@.*')
+      );
+    }
+
     // User Profiles Collection
     match /users/{userId} {
       allow read: if isAuthenticated();
-      // Only existing Admins can set role to 'admin'; public signups are restricted to 'salesperson'
-      allow create: if isAuthenticated() && (isAdmin() || request.resource.data.role != 'admin');
-      allow update: if isAdmin() || (isOwner(userId) && request.resource.data.role == resource.data.role);
+      allow create: if isAuthenticated() && (isAdmin() || isInitialAdminEmail() || request.resource.data.role != 'admin');
+      allow update: if isAdmin() || isInitialAdminEmail() || (isOwner(userId) && request.resource.data.role == resource.data.role);
       allow delete: if isAdmin();
     }
 

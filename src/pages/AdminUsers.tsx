@@ -12,7 +12,10 @@ import {
   ToggleRight,
   Mail,
   User as UserIcon,
-  Edit
+  Edit,
+  Trash2,
+  UserCheck,
+  UserX
 } from 'lucide-react';
 
 export const AdminUsers: React.FC = () => {
@@ -26,6 +29,10 @@ export const AdminUsers: React.FC = () => {
   const updateUserPermissions = useUserStore(state => state.updateUserPermissions);
   const updateUserRole = useUserStore(state => state.updateUserRole);
   const updateUser = useUserStore(state => state.updateUser);
+  const toggleUserStatus = useUserStore(state => state.toggleUserStatus);
+  const deleteUser = useUserStore(state => state.deleteUser);
+
+  const [deleteConfirmUser, setDeleteConfirmUser] = useState<UserProfile | null>(null);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [displayName, setDisplayName] = useState('');
@@ -185,6 +192,39 @@ export const AdminUsers: React.FC = () => {
     }
   };
 
+  const handleToggleStatus = async (targetUser: UserProfile) => {
+    if (targetUser.uid === user?.uid) {
+      setErrorMsg('You cannot deactivate your own active account.');
+      return;
+    }
+    try {
+      await toggleUserStatus(targetUser.uid, targetUser.status);
+      const nextStatus = targetUser.status === 'deactivated' ? 'activated' : 'deactivated';
+      setSuccessMsg(`User "${targetUser.displayName}" ${nextStatus} successfully.`);
+      setTimeout(() => setSuccessMsg(null), 2000);
+    } catch (err) {
+      console.error('Failed to toggle user status:', err);
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!deleteConfirmUser) return;
+    if (deleteConfirmUser.uid === user?.uid) {
+      setErrorMsg('You cannot delete your own account.');
+      setDeleteConfirmUser(null);
+      return;
+    }
+    try {
+      await deleteUser(deleteConfirmUser.uid);
+      setSuccessMsg(`User "${deleteConfirmUser.displayName}" deleted successfully.`);
+      setDeleteConfirmUser(null);
+      setTimeout(() => setSuccessMsg(null), 2500);
+    } catch (err) {
+      console.error('Failed to delete user:', err);
+      setErrorMsg('Error deleting user.');
+    }
+  };
+
   return (
     <div className="space-y-6 animate-fade-in text-crm-text">
       {/* Page Header */}
@@ -227,13 +267,14 @@ export const AdminUsers: React.FC = () => {
               <thead>
                 <tr className="border-b border-crm-border bg-crm-bg/40 text-crm-muted font-bold text-xs uppercase tracking-wider">
                   <th className="py-4 px-6">Name / Email</th>
-                  <th className="py-4 px-6 w-32">Role</th>
-                  <th className="py-4 px-6 text-center w-28">Monthly Target</th>
+                  <th className="py-4 px-6 w-28">Role</th>
+                  <th className="py-4 px-6 text-center w-28">Status</th>
+                  <th className="py-4 px-6 text-center w-24">Monthly Target</th>
                   <th className="py-4 px-6 text-center">Manage Deals</th>
                   <th className="py-4 px-6 text-center">Manage Meetings</th>
                   <th className="py-4 px-6 text-center">Manage Cadences</th>
                   <th className="py-4 px-6 text-center">View Team Schedules</th>
-                  <th className="py-4 px-6 text-right w-20">Actions</th>
+                  <th className="py-4 px-6 text-right w-24">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-crm-border/60">
@@ -244,9 +285,10 @@ export const AdminUsers: React.FC = () => {
                     canManageCadences: item.role === 'admin',
                     canViewAllSchedules: item.role === 'admin',
                   };
+                  const isDeactivated = item.status === 'deactivated';
 
                   return (
-                    <tr key={item.uid} className="hover:bg-crm-bg/20 text-sm">
+                    <tr key={item.uid} className={`hover:bg-crm-bg/20 text-sm ${isDeactivated ? 'opacity-60 bg-rose-500/[0.02]' : ''}`}>
                       <td className="py-4 px-6">
                         <div>
                           <p className="font-semibold text-crm-text">{item.displayName}</p>
@@ -264,6 +306,32 @@ export const AdminUsers: React.FC = () => {
                         </select>
                       </td>
                       
+                      {/* User Status Column */}
+                      <td className="py-4 px-6 text-center">
+                        <button
+                          onClick={() => handleToggleStatus(item)}
+                          disabled={item.uid === user?.uid}
+                          className={`px-2.5 py-1 rounded-full text-xs font-bold transition flex items-center justify-center space-x-1 mx-auto border cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                            isDeactivated
+                              ? 'bg-rose-500/10 border-rose-500/20 text-rose-600 dark:text-rose-400'
+                              : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-600 dark:text-emerald-400'
+                          }`}
+                          title={item.uid === user?.uid ? "You cannot deactivate your own account" : isDeactivated ? "Click to Activate User" : "Click to Deactivate User"}
+                        >
+                          {isDeactivated ? (
+                            <>
+                              <UserX className="h-3 w-3" />
+                              <span>Inactive</span>
+                            </>
+                          ) : (
+                            <>
+                              <UserCheck className="h-3 w-3" />
+                              <span>Active</span>
+                            </>
+                          )}
+                        </button>
+                      </td>
+
                       {/* Quota Target Column */}
                       <td className="py-4 px-6 text-center">
                         <span className="font-semibold text-crm-text bg-crm-bg border border-crm-border rounded-lg px-2.5 py-1 text-xs">
@@ -329,13 +397,23 @@ export const AdminUsers: React.FC = () => {
 
                       {/* Action Column */}
                       <td className="py-4 px-6 text-right">
-                        <button
-                          onClick={() => openEditModal(item)}
-                          className="p-1.5 rounded-lg text-crm-muted hover:text-primary hover:bg-crm-bg border border-transparent hover:border-crm-border transition shadow-sm"
-                          title="Edit User Target Quota"
-                        >
-                          <Edit className="h-4 w-4" />
-                        </button>
+                        <div className="flex items-center justify-end space-x-1">
+                          <button
+                            onClick={() => openEditModal(item)}
+                            className="p-1.5 rounded-lg text-crm-muted hover:text-primary hover:bg-crm-bg border border-transparent hover:border-crm-border transition shadow-sm"
+                            title="Edit User Target Quota"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => setDeleteConfirmUser(item)}
+                            disabled={item.uid === user?.uid}
+                            className="p-1.5 rounded-lg text-crm-muted hover:text-rose-500 hover:bg-crm-bg border border-transparent hover:border-crm-border transition shadow-sm disabled:opacity-30 disabled:cursor-not-allowed"
+                            title={item.uid === user?.uid ? "You cannot delete your own account" : "Delete User"}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -576,6 +654,50 @@ export const AdminUsers: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete User Confirmation Modal */}
+      {deleteConfirmUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-xs">
+          <div className="w-full max-w-md bg-crm-card border border-crm-border rounded-3xl p-6 shadow-2xl relative text-crm-text animate-fade-in">
+            <button 
+              onClick={() => setDeleteConfirmUser(null)}
+              className="absolute top-4 right-4 p-1.5 rounded-lg text-crm-muted hover:text-crm-text hover:bg-crm-bg transition border border-transparent hover:border-crm-border cursor-pointer"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <div className="flex items-center space-x-3 mb-4 text-rose-500">
+              <div className="p-2.5 rounded-2xl bg-rose-500/10 border border-rose-500/20">
+                <Trash2 className="h-6 w-6" />
+              </div>
+              <h3 className="text-lg font-bold text-crm-text">Delete User Account</h3>
+            </div>
+
+            <p className="text-sm text-crm-muted mb-6 leading-relaxed">
+              Are you sure you want to permanently delete the user profile for{' '}
+              <strong className="text-crm-text font-bold">{deleteConfirmUser.displayName}</strong> ({deleteConfirmUser.email})? 
+              This action cannot be undone.
+            </p>
+
+            <div className="flex space-x-3">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmUser(null)}
+                className="flex-1 bg-crm-bg hover:bg-crm-border text-crm-muted font-bold py-2.5 rounded-xl text-sm border border-crm-border transition shadow-sm cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteUser}
+                className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-bold py-2.5 rounded-xl text-sm transition shadow-lg shadow-rose-600/20 cursor-pointer"
+              >
+                Delete Account
+              </button>
+            </div>
           </div>
         </div>
       )}

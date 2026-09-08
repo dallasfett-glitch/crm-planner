@@ -14,6 +14,7 @@ export interface UserProfile {
   email: string;
   displayName: string;
   role: 'admin' | 'salesperson';
+  status?: 'active' | 'deactivated';
   monthly_meeting_quota?: number;
   permissions?: {
     canManageDeals?: boolean;
@@ -89,7 +90,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               // If user matches designated initial admin email, ensure role is admin
               const currentRole = isInitialAdmin ? 'admin' : data.role;
               if (isInitialAdmin && data.role !== 'admin') {
-                await setDoc(userRef, { role: 'admin' }, { merge: true });
+                try {
+                  await setDoc(userRef, { role: 'admin' }, { merge: true });
+                } catch (e) {
+                  console.warn('Could not persist admin role update:', e);
+                }
               }
 
               setUser({

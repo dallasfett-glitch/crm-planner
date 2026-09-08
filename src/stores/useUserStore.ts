@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { collection, onSnapshot, doc, updateDoc, setDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, updateDoc, setDoc, deleteDoc } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '../firebase';
 import type { UserProfile } from '../context/AuthContext';
 
@@ -12,6 +12,8 @@ interface UserStoreState {
   updateUserPermissions: (uid: string, permissions: UserProfile['permissions']) => Promise<void>;
   updateUserRole: (uid: string, role: UserProfile['role']) => Promise<void>;
   updateUser: (uid: string, userData: Partial<UserProfile>) => Promise<void>;
+  toggleUserStatus: (uid: string, currentStatus?: 'active' | 'deactivated') => Promise<void>;
+  deleteUser: (uid: string) => Promise<void>;
 }
 
 const STORAGE_KEY = 'crm_mock_users';
@@ -211,6 +213,46 @@ export const useUserStore = create<UserStoreState>((set, get) => ({
         }
         return u;
       });
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+      set({ users: list });
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('crm-user-updated'));
+      }
+    }
+  },
+
+  toggleUserStatus: async (uid, currentStatus) => {
+    const nextStatus: 'active' | 'deactivated' = currentStatus === 'deactivated' ? 'active' : 'deactivated';
+    if (isFirebaseConfigured && db) {
+      const docRef = doc(db, 'users', uid);
+      await updateDoc(docRef, {
+        status: nextStatus,
+        updatedAt: new Date(),
+      });
+    } else {
+      const list = get().users.map((u) => {
+        if (u.uid === uid) {
+          return {
+            ...u,
+            status: nextStatus,
+          };
+        }
+        return u;
+      });
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+      set({ users: list });
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('crm-user-updated'));
+      }
+    }
+  },
+
+  deleteUser: async (uid) => {
+    if (isFirebaseConfigured && db) {
+      const docRef = doc(db, 'users', uid);
+      await deleteDoc(docRef);
+    } else {
+      const list = get().users.filter((u) => u.uid !== uid);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
       set({ users: list });
       if (typeof window !== 'undefined') {
