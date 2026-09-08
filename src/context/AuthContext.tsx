@@ -6,7 +6,7 @@ import {
   signOut as fbSignOut
 } from 'firebase/auth';
 import type { User as FirebaseUser } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp, collection, query, where, getDocs, deleteDoc } from 'firebase/firestore';
 import { auth, db, isFirebaseConfigured } from '../firebase';
 
 export interface UserProfile {
@@ -104,16 +104,51 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 role: currentRole,
               });
             } else {
-              // Create user profile if missing.
+              // Check if a pre-provisioned user profile was created by an admin in Team Management
+              let preProvisionedData: Partial<UserProfile> | null = null;
+              let preProvisionedDocId: string | null = null;
+
+              if (userEmail) {
+                try {
+                  const q = query(collection(db!, 'users'), where('email', '==', userEmail));
+                  const querySnap = await getDocs(q);
+                  if (!querySnap.empty) {
+                    const matchedDoc = querySnap.docs[0];
+                    preProvisionedData = matchedDoc.data() as Partial<UserProfile>;
+                    preProvisionedDocId = matchedDoc.id;
+                  }
+                } catch (err) {
+                  console.warn('Could not check for pre-provisioned profile:', err);
+                }
+              }
+
               const profile: Omit<UserProfile, 'uid'> = {
                 email: firebaseUser.email || '',
-                displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
-                role: isInitialAdmin ? 'admin' : 'salesperson',
+                displayName: preProvisionedData?.displayName || firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
+                role: isInitialAdmin ? 'admin' : (preProvisionedData?.role || 'salesperson'),
+                monthly_meeting_quota: preProvisionedData?.monthly_meeting_quota ?? 20,
+                permissions: preProvisionedData?.permissions || {
+                  canManageDeals: (isInitialAdmin || preProvisionedData?.role === 'admin'),
+                  canManageMeetings: true,
+                  canManageCadences: (isInitialAdmin || preProvisionedData?.role === 'admin'),
+                  canViewAllSchedules: (isInitialAdmin || preProvisionedData?.role === 'admin'),
+                },
+                status: preProvisionedData?.status || 'active',
               };
+
               await setDoc(userRef, {
                 ...profile,
                 createdAt: serverTimestamp(),
               });
+
+              if (preProvisionedDocId && preProvisionedDocId !== firebaseUser.uid) {
+                try {
+                  await deleteDoc(doc(db!, 'users', preProvisionedDocId));
+                } catch (err) {
+                  console.warn('Could not delete temporary pre-provisioned user doc:', err);
+                }
+              }
+
               setUser({ uid: firebaseUser.uid, ...profile });
             }
           } else {

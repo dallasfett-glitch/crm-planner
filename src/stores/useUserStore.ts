@@ -116,6 +116,7 @@ export const useUserStore = create<UserStoreState>((set, get) => ({
         role: userData.role,
         monthly_meeting_quota: quota,
         permissions: finalPermissions,
+        status: 'active',
         createdAt: new Date(),
       });
       return newUid;
@@ -128,6 +129,7 @@ export const useUserStore = create<UserStoreState>((set, get) => ({
         role: userData.role,
         monthly_meeting_quota: quota,
         permissions: finalPermissions,
+        status: 'active',
       };
       const list = [...get().users, newUser];
       localStorage.setItem(STORAGE_KEY, JSON.stringify(list));

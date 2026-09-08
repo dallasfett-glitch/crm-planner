@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useUserStore } from '../stores/useUserStore';
 import { useAuth, type UserProfile } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -425,12 +426,12 @@ export const AdminUsers: React.FC = () => {
       )}
 
       {/* Add User Modal */}
-      {modalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-xs">
-          <div className="w-full max-w-lg bg-crm-card border border-crm-border rounded-3xl p-6 shadow-2xl relative text-crm-text animate-fade-in">
+      {modalOpen && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-6 bg-slate-950/60 backdrop-blur-sm overflow-y-auto">
+          <div className="w-full max-w-lg bg-crm-card border border-crm-border rounded-3xl p-6 shadow-2xl relative text-crm-text animate-fade-in my-auto max-h-[88vh] overflow-y-auto scrollbar-thin">
             <button 
               onClick={() => setModalOpen(false)}
-              className="absolute top-4 right-4 p-1.5 rounded-lg text-crm-muted hover:text-crm-text hover:bg-crm-bg transition border border-transparent hover:border-crm-border"
+              className="absolute top-4 right-4 p-1.5 rounded-lg text-crm-muted hover:text-crm-text hover:bg-crm-bg transition border border-transparent hover:border-crm-border cursor-pointer"
             >
               <X className="h-5 w-5" />
             </button>
@@ -463,7 +464,7 @@ export const AdminUsers: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold text-crm-muted uppercase tracking-wider mb-2">Email Address *</label>
                   <div className="relative">
@@ -517,7 +518,7 @@ export const AdminUsers: React.FC = () => {
               <div className="border-t border-crm-border/60 pt-4 space-y-3">
                 <h4 className="text-xs font-bold text-primary uppercase tracking-wider">Module Level Permissions</h4>
                 
-                <div className="grid grid-cols-2 gap-3 bg-crm-bg/50 p-4 rounded-2xl border border-crm-border">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-crm-bg/50 p-4 rounded-2xl border border-crm-border">
                   <label className="flex items-center space-x-2.5 text-xs cursor-pointer font-medium">
                     <input
                       type="checkbox"
@@ -557,33 +558,34 @@ export const AdminUsers: React.FC = () => {
                 </div>
               </div>
 
-              <div className="flex space-x-3 mt-6">
+              <div className="flex space-x-3 mt-6 pt-2 border-t border-crm-border/40">
                 <button
                   type="button"
                   onClick={() => setModalOpen(false)}
-                  className="flex-1 bg-crm-bg hover:bg-crm-border text-crm-muted font-bold py-2.5 rounded-xl text-sm border border-crm-border transition shadow-sm"
+                  className="flex-1 bg-crm-bg hover:bg-crm-border text-crm-muted font-bold py-2.5 rounded-xl text-sm border border-crm-border transition shadow-sm cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 bg-primary hover:bg-primary-hover text-white font-bold py-2.5 rounded-xl text-sm transition shadow-lg shadow-primary/10"
+                  className="flex-1 bg-primary hover:bg-primary-hover text-white font-bold py-2.5 rounded-xl text-sm transition shadow-lg shadow-primary/10 cursor-pointer"
                 >
                   Create User
                 </button>
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Edit User Modal */}
-      {editModalOpen && editingUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-xs">
-          <div className="w-full max-w-lg bg-crm-card border border-crm-border rounded-3xl p-6 shadow-2xl relative text-crm-text animate-fade-in">
+      {editModalOpen && editingUser && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-6 bg-slate-950/60 backdrop-blur-sm overflow-y-auto">
+          <div className="w-full max-w-lg bg-crm-card border border-crm-border rounded-3xl p-6 shadow-2xl relative text-crm-text animate-fade-in my-auto max-h-[88vh] overflow-y-auto scrollbar-thin">
             <button 
               onClick={() => setEditModalOpen(false)}
-              className="absolute top-4 right-4 p-1.5 rounded-lg text-crm-muted hover:text-crm-text hover:bg-crm-bg transition border border-transparent hover:border-crm-border"
+              className="absolute top-4 right-4 p-1.5 rounded-lg text-crm-muted hover:text-crm-text hover:bg-crm-bg transition border border-transparent hover:border-crm-border cursor-pointer"
             >
               <X className="h-5 w-5" />
             </button>
@@ -638,30 +640,31 @@ export const AdminUsers: React.FC = () => {
                 </div>
               ) : null}
 
-              <div className="flex space-x-3 mt-6">
+              <div className="flex space-x-3 mt-6 pt-2 border-t border-crm-border/40">
                 <button
                   type="button"
                   onClick={() => setEditModalOpen(false)}
-                  className="flex-1 bg-crm-bg hover:bg-crm-border text-crm-muted font-bold py-2.5 rounded-xl text-sm border border-crm-border transition shadow-sm"
+                  className="flex-1 bg-crm-bg hover:bg-crm-border text-crm-muted font-bold py-2.5 rounded-xl text-sm border border-crm-border transition shadow-sm cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 bg-primary hover:bg-primary-hover text-white font-bold py-2.5 rounded-xl text-sm transition shadow-lg shadow-primary/10"
+                  className="flex-1 bg-primary hover:bg-primary-hover text-white font-bold py-2.5 rounded-xl text-sm transition shadow-lg shadow-primary/10 cursor-pointer"
                 >
                   Save Changes
                 </button>
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Delete User Confirmation Modal */}
-      {deleteConfirmUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-xs">
-          <div className="w-full max-w-md bg-crm-card border border-crm-border rounded-3xl p-6 shadow-2xl relative text-crm-text animate-fade-in">
+      {deleteConfirmUser && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-6 bg-slate-950/60 backdrop-blur-sm overflow-y-auto">
+          <div className="w-full max-w-md bg-crm-card border border-crm-border rounded-3xl p-6 shadow-2xl relative text-crm-text animate-fade-in my-auto max-h-[88vh] overflow-y-auto scrollbar-thin">
             <button 
               onClick={() => setDeleteConfirmUser(null)}
               className="absolute top-4 right-4 p-1.5 rounded-lg text-crm-muted hover:text-crm-text hover:bg-crm-bg transition border border-transparent hover:border-crm-border cursor-pointer"
@@ -682,7 +685,7 @@ export const AdminUsers: React.FC = () => {
               This action cannot be undone.
             </p>
 
-            <div className="flex space-x-3">
+            <div className="flex space-x-3 pt-2 border-t border-crm-border/40">
               <button
                 type="button"
                 onClick={() => setDeleteConfirmUser(null)}
@@ -699,7 +702,8 @@ export const AdminUsers: React.FC = () => {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
