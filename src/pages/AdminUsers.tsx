@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useUserStore } from '../stores/useUserStore';
+import { useCompanyStore } from '../stores/useCompanyStore';
+import { useContactStore } from '../stores/useContactStore';
+import { useDealStore } from '../stores/useDealStore';
+import { useMeetingStore } from '../stores/useMeetingStore';
 import { useAuth, type UserProfile } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -16,7 +20,12 @@ import {
   Edit,
   Trash2,
   UserCheck,
-  UserX
+  UserX,
+  AlertTriangle,
+  Building2,
+  Users,
+  Briefcase,
+  Calendar
 } from 'lucide-react';
 
 export const AdminUsers: React.FC = () => {
@@ -33,7 +42,25 @@ export const AdminUsers: React.FC = () => {
   const toggleUserStatus = useUserStore(state => state.toggleUserStatus);
   const deleteUser = useUserStore(state => state.deleteUser);
 
+  // Entity stores for dependency check and account reassignment
+  const companies = useCompanyStore(state => state.companies);
+  const initializeCompanies = useCompanyStore(state => state.initialize);
+  const updateCompany = useCompanyStore(state => state.updateCompany);
+
+  const contacts = useContactStore(state => state.contacts);
+  const initializeContacts = useContactStore(state => state.initialize);
+  const updateContact = useContactStore(state => state.updateContact);
+
+  const deals = useDealStore(state => state.deals);
+  const initializeDeals = useDealStore(state => state.initialize);
+  const updateDeal = useDealStore(state => state.updateDeal);
+
+  const meetings = useMeetingStore(state => state.meetings);
+  const initializeMeetings = useMeetingStore(state => state.initialize);
+  const updateMeeting = useMeetingStore(state => state.updateMeeting);
+
   const [deleteConfirmUser, setDeleteConfirmUser] = useState<UserProfile | null>(null);
+  const [reassignTargetUid, setReassignTargetUid] = useState<string>('');
 
   const [modalOpen, setModalOpen] = useState(false);
   const [displayName, setDisplayName] = useState('');
@@ -63,11 +90,22 @@ export const AdminUsers: React.FC = () => {
     }
   }, [user, navigate]);
 
-  // Initialize store
+  // Initialize stores
   useEffect(() => {
-    const unsub = initializeUsers();
-    return () => unsub();
-  }, [initializeUsers]);
+    const unsubUsers = initializeUsers();
+    const unsubCompanies = initializeCompanies();
+    const unsubContacts = initializeContacts();
+    const unsubDeals = initializeDeals();
+    const unsubMeetings = initializeMeetings();
+
+    return () => {
+      unsubUsers();
+      unsubCompanies();
+      unsubContacts();
+      unsubDeals();
+      unsubMeetings();
+    };
+  }, [initializeUsers, initializeCompanies, initializeContacts, initializeDeals, initializeMeetings]);
 
   const openAddModal = () => {
     setDisplayName('');
@@ -145,6 +183,37 @@ export const AdminUsers: React.FC = () => {
     }
   };
 
+  const getTiedRecords = (targetUser: UserProfile) => {
+    const tiedCompanies = companies.filter(c => 
+      c.assignedSalespersonId === targetUser.uid || 
+      c.primaryOwner === targetUser.uid || 
+      c.primaryOwner === targetUser.displayName || 
+      (c.primaryOwner && targetUser.email && c.primaryOwner.toLowerCase() === targetUser.email.toLowerCase())
+    );
+    const tiedContacts = contacts.filter(c => 
+      c.assignedSalespersonId === targetUser.uid || 
+      c.primaryOwner === targetUser.uid || 
+      c.primaryOwner === targetUser.displayName || 
+      (c.primaryOwner && targetUser.email && c.primaryOwner.toLowerCase() === targetUser.email.toLowerCase())
+    );
+    const tiedDeals = deals.filter(d => d.assignedSalespersonId === targetUser.uid);
+    const tiedMeetings = meetings.filter(m => m.salespersonId === targetUser.uid);
+
+    return {
+      companies: tiedCompanies,
+      contacts: tiedContacts,
+      deals: tiedDeals,
+      meetings: tiedMeetings,
+      totalCount: tiedCompanies.length + tiedContacts.length + tiedDeals.length + tiedMeetings.length
+    };
+  };
+
+  const openDeleteModal = (targetUser: UserProfile) => {
+    setDeleteConfirmUser(targetUser);
+    setReassignTargetUid('');
+    setErrorMsg(null);
+  };
+
   const handleDeleteUser = async () => {
     if (!deleteConfirmUser) return;
     setErrorMsg(null);
@@ -157,14 +226,75 @@ export const AdminUsers: React.FC = () => {
       return;
     }
 
-    try {
-      const targetName = deleteConfirmUser.displayName;
-      await deleteUser(deleteConfirmUser.uid);
-      setSuccessMsg(`User account for "${targetName}" has been permanently deleted.`);
-      setDeleteConfirmUser(null);
-      setTimeout(() => setSuccessMsg(null), 4000);
-    } catch (err: unknown) {
-      setErrorMsg(err instanceof Error ? err.message : 'Failed to delete user profile.');
+    const tied = getTiedRecords(deleteConfirmUser);
+
+    if (tied.totalCount > 0) {
+      if (!reassignTargetUid) {
+        setErrorMsg('Please select a replacement salesperson to take over active records.');
+        return;
+      }
+
+      const replacementUser = users.find(u => u.uid === reassignTargetUid);
+      if (!replacementUser) {
+        setErrorMsg('Selected replacement salesperson could not be found.');
+        return;
+      }
+
+      try {
+        const replacementOwnerName = replacementUser.displayName || replacementUser.uid;
+
+        // 1. Reassign Companies
+        for (const comp of tied.companies) {
+          await updateCompany(comp.id, {
+            assignedSalespersonId: replacementUser.uid,
+            primaryOwner: replacementOwnerName
+          });
+        }
+
+        // 2. Reassign Contacts
+        for (const cnt of tied.contacts) {
+          await updateContact(cnt.id, {
+            assignedSalespersonId: replacementUser.uid,
+            primaryOwner: replacementOwnerName
+          });
+        }
+
+        // 3. Reassign Deals
+        for (const deal of tied.deals) {
+          await updateDeal(deal.id, {
+            assignedSalespersonId: replacementUser.uid
+          });
+        }
+
+        // 4. Reassign Meetings
+        for (const mtg of tied.meetings) {
+          await updateMeeting(mtg.id, {
+            salespersonId: replacementUser.uid
+          });
+        }
+
+        // 5. Delete User Profile
+        const targetName = deleteConfirmUser.displayName;
+        await deleteUser(deleteConfirmUser.uid);
+
+        setSuccessMsg(`Reassigned ${tied.totalCount} active record(s) to "${replacementUser.displayName}" and deleted user account "${targetName}".`);
+        setDeleteConfirmUser(null);
+        setReassignTargetUid('');
+        setTimeout(() => setSuccessMsg(null), 5000);
+      } catch (err: unknown) {
+        setErrorMsg(err instanceof Error ? err.message : 'Failed to reassign records and delete user profile.');
+      }
+    } else {
+      try {
+        const targetName = deleteConfirmUser.displayName;
+        await deleteUser(deleteConfirmUser.uid);
+        setSuccessMsg(`User account for "${targetName}" has been permanently deleted.`);
+        setDeleteConfirmUser(null);
+        setReassignTargetUid('');
+        setTimeout(() => setSuccessMsg(null), 4000);
+      } catch (err: unknown) {
+        setErrorMsg(err instanceof Error ? err.message : 'Failed to delete user profile.');
+      }
     }
   };
 
@@ -445,7 +575,7 @@ export const AdminUsers: React.FC = () => {
                             <Edit className="h-4 w-4" />
                           </button>
                           <button
-                            onClick={() => setDeleteConfirmUser(item)}
+                            onClick={() => openDeleteModal(item)}
                             disabled={item.uid === user?.uid}
                             className="p-1.5 rounded-lg text-crm-muted hover:text-rose-500 hover:bg-crm-bg border border-transparent hover:border-crm-border transition shadow-sm disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
                             title={item.uid === user?.uid ? "You cannot delete your own account" : "Delete User"}
@@ -699,10 +829,10 @@ export const AdminUsers: React.FC = () => {
         document.body
       )}
 
-      {/* Delete User Confirmation Modal */}
+      {/* Delete User Confirmation / Reassignment Modal */}
       {deleteConfirmUser && createPortal(
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 md:p-6 bg-slate-950/60 backdrop-blur-sm overflow-y-auto">
-          <div className="w-full max-w-md bg-crm-card border border-crm-border rounded-3xl p-6 shadow-2xl relative text-crm-text animate-fade-in my-auto max-h-[88vh] overflow-y-auto scrollbar-thin">
+          <div className="w-full max-w-lg bg-crm-card border border-crm-border rounded-3xl p-6 shadow-2xl relative text-crm-text animate-fade-in my-auto max-h-[88vh] overflow-y-auto scrollbar-thin">
             <button 
               onClick={() => setDeleteConfirmUser(null)}
               className="absolute top-4 right-4 p-1.5 rounded-lg text-crm-muted hover:text-crm-text hover:bg-crm-bg transition border border-transparent hover:border-crm-border cursor-pointer"
@@ -710,35 +840,151 @@ export const AdminUsers: React.FC = () => {
               <X className="h-5 w-5" />
             </button>
 
-            <div className="flex items-center space-x-3 mb-4 text-rose-500">
-              <div className="p-2.5 rounded-2xl bg-rose-500/10 border border-rose-500/20">
-                <Trash2 className="h-6 w-6" />
-              </div>
-              <h3 className="text-lg font-bold text-crm-text">Delete User Account</h3>
-            </div>
+            {(() => {
+              const tied = getTiedRecords(deleteConfirmUser);
+              const activeReplacementUsers = users.filter(u => u.uid !== deleteConfirmUser.uid && u.status !== 'deactivated');
 
-            <p className="text-sm text-crm-muted mb-6 leading-relaxed">
-              Are you sure you want to permanently delete the user profile for{' '}
-              <strong className="text-crm-text font-bold">{deleteConfirmUser.displayName}</strong> ({deleteConfirmUser.email})? 
-              This action cannot be undone.
-            </p>
+              if (tied.totalCount > 0) {
+                return (
+                  <div>
+                    <div className="flex items-center space-x-3 mb-4 text-amber-500">
+                      <div className="p-2.5 rounded-2xl bg-amber-500/10 border border-amber-500/20">
+                        <AlertTriangle className="h-6 w-6" />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-bold text-crm-text">Reassignment Required</h3>
+                        <p className="text-xs text-amber-500 font-semibold">Deletion blocked until records are reassigned</p>
+                      </div>
+                    </div>
 
-            <div className="flex space-x-3 pt-2 border-t border-crm-border/40">
-              <button
-                type="button"
-                onClick={() => setDeleteConfirmUser(null)}
-                className="flex-1 bg-crm-bg hover:bg-crm-border text-crm-muted font-bold py-2.5 rounded-xl text-sm border border-crm-border transition shadow-sm cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleDeleteUser}
-                className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-bold py-2.5 rounded-xl text-sm transition shadow-lg shadow-rose-600/20 cursor-pointer"
-              >
-                Delete Account
-              </button>
-            </div>
+                    <p className="text-sm text-crm-muted mb-4 leading-relaxed">
+                      User <strong className="text-crm-text font-bold">{deleteConfirmUser.displayName}</strong> ({deleteConfirmUser.email}) is currently assigned to <strong className="text-primary font-bold">{tied.totalCount} active CRM record(s)</strong>.
+                    </p>
+
+                    {/* Breakdown Box */}
+                    <div className="bg-crm-bg/60 border border-crm-border rounded-2xl p-4 mb-5 space-y-2">
+                      <h4 className="text-xs font-bold uppercase tracking-wider text-crm-muted mb-2">Attached Records Breakdown:</h4>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div className="flex items-center justify-between p-2 rounded-xl bg-crm-card border border-crm-border">
+                          <span className="flex items-center space-x-2 text-crm-muted">
+                            <Building2 className="h-4 w-4 text-primary" />
+                            <span>Companies</span>
+                          </span>
+                          <strong className="text-crm-text font-bold">{tied.companies.length}</strong>
+                        </div>
+                        <div className="flex items-center justify-between p-2 rounded-xl bg-crm-card border border-crm-border">
+                          <span className="flex items-center space-x-2 text-crm-muted">
+                            <Users className="h-4 w-4 text-emerald-500" />
+                            <span>Contacts / Clients</span>
+                          </span>
+                          <strong className="text-crm-text font-bold">{tied.contacts.length}</strong>
+                        </div>
+                        <div className="flex items-center justify-between p-2 rounded-xl bg-crm-card border border-crm-border">
+                          <span className="flex items-center space-x-2 text-crm-muted">
+                            <Briefcase className="h-4 w-4 text-amber-500" />
+                            <span>Deals</span>
+                          </span>
+                          <strong className="text-crm-text font-bold">{tied.deals.length}</strong>
+                        </div>
+                        <div className="flex items-center justify-between p-2 rounded-xl bg-crm-card border border-crm-border">
+                          <span className="flex items-center space-x-2 text-crm-muted">
+                            <Calendar className="h-4 w-4 text-cyan-500" />
+                            <span>Meetings</span>
+                          </span>
+                          <strong className="text-crm-text font-bold">{tied.meetings.length}</strong>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Replacement Salesperson Selector */}
+                    <div className="mb-6">
+                      <label className="block text-xs font-semibold text-crm-muted uppercase tracking-wider mb-2">
+                        Reassign All Attached Records To *
+                      </label>
+                      <select
+                        value={reassignTargetUid}
+                        onChange={(e) => setReassignTargetUid(e.target.value)}
+                        className="w-full bg-crm-bg border border-crm-border focus:border-primary rounded-xl px-4 py-2.5 text-sm text-crm-text outline-none transition cursor-pointer"
+                        required
+                      >
+                        <option value="">-- Select Active Replacement Salesperson --</option>
+                        {activeReplacementUsers.map((u) => (
+                          <option key={u.uid} value={u.uid}>
+                            {u.displayName} ({u.role})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {errorMsg && (
+                      <div className="mb-4 px-4 py-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-500 text-xs flex items-center space-x-2">
+                        <AlertCircle className="h-4 w-4 shrink-0" />
+                        <span>{errorMsg}</span>
+                      </div>
+                    )}
+
+                    <div className="flex space-x-3 pt-2 border-t border-crm-border/40">
+                      <button
+                        type="button"
+                        onClick={() => setDeleteConfirmUser(null)}
+                        className="flex-1 bg-crm-bg hover:bg-crm-border text-crm-muted font-bold py-2.5 rounded-xl text-sm border border-crm-border transition shadow-sm cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDeleteUser}
+                        disabled={!reassignTargetUid}
+                        className="flex-1 bg-amber-600 hover:bg-amber-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-2.5 rounded-xl text-sm transition shadow-lg shadow-amber-600/20 cursor-pointer"
+                      >
+                        Reassign & Delete Account
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
+
+              return (
+                <div>
+                  <div className="flex items-center space-x-3 mb-4 text-rose-500">
+                    <div className="p-2.5 rounded-2xl bg-rose-500/10 border border-rose-500/20">
+                      <Trash2 className="h-6 w-6" />
+                    </div>
+                    <h3 className="text-lg font-bold text-crm-text">Delete User Account</h3>
+                  </div>
+
+                  <p className="text-sm text-crm-muted mb-6 leading-relaxed">
+                    Are you sure you want to permanently delete the user profile for{' '}
+                    <strong className="text-crm-text font-bold">{deleteConfirmUser.displayName}</strong> ({deleteConfirmUser.email})? 
+                    This user currently has no active assigned accounts, contacts, deals, or meetings. This action cannot be undone.
+                  </p>
+
+                  {errorMsg && (
+                    <div className="mb-4 px-4 py-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-500 text-xs flex items-center space-x-2">
+                      <AlertCircle className="h-4 w-4 shrink-0" />
+                      <span>{errorMsg}</span>
+                    </div>
+                  )}
+
+                  <div className="flex space-x-3 pt-2 border-t border-crm-border/40">
+                    <button
+                      type="button"
+                      onClick={() => setDeleteConfirmUser(null)}
+                      className="flex-1 bg-crm-bg hover:bg-crm-border text-crm-muted font-bold py-2.5 rounded-xl text-sm border border-crm-border transition shadow-sm cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDeleteUser}
+                      className="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-bold py-2.5 rounded-xl text-sm transition shadow-lg shadow-rose-600/20 cursor-pointer"
+                    >
+                      Delete Account
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>,
         document.body
