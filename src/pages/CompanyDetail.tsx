@@ -27,8 +27,7 @@ import {
   ExternalLink,
   X,
   AlertCircle,
-  Loader2,
-  DollarSign
+  Loader2
 } from 'lucide-react';
 
 export const CompanyDetail: React.FC = () => {
