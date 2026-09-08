@@ -76,13 +76,32 @@ export const Deals: React.FC = () => {
 
   const [formError, setFormError] = useState<string | null>(null);
 
+  const availableContacts = React.useMemo(() => {
+    if (!companyId) return [];
+    return contacts.filter(c => c.companyId === companyId);
+  }, [contacts, companyId]);
+
+  const handleCompanyChange = (newCompId: string) => {
+    setCompanyId(newCompId);
+    const companyContacts = contacts.filter(c => c.companyId === newCompId);
+    if (companyContacts.length > 0) {
+      if (!companyContacts.some(c => c.id === contactId)) {
+        setContactId(companyContacts[0].id);
+      }
+    } else {
+      setContactId('');
+    }
+  };
+
   const openAddModal = () => {
     setEditingId(null);
     setName('');
     setValue(0);
     setStage('qualification');
-    setCompanyId(companies[0]?.id || '');
-    setContactId(contacts[0]?.id || '');
+    const initialCompId = companies[0]?.id || '';
+    const initialCompContacts = contacts.filter(c => c.companyId === initialCompId);
+    setCompanyId(initialCompId);
+    setContactId(initialCompContacts[0]?.id || '');
     setAssignedSalespersonId(user?.uid || 'sales-uid');
     setFormError(null);
     setModalOpen(true);
@@ -94,7 +113,7 @@ export const Deals: React.FC = () => {
     setValue(d.value);
     setStage(d.stage);
     setCompanyId(d.companyId);
-    setContactId(d.contactId);
+    setContactId(d.contactId || '');
     setAssignedSalespersonId(d.assignedSalespersonId || 'sales-uid');
     setFormError(null);
     setModalOpen(true);
@@ -122,8 +141,8 @@ export const Deals: React.FC = () => {
       setFormError('Please choose a company association.');
       return;
     }
-    if (!contactId) {
-      setFormError('Please choose a primary contact.');
+    if (availableContacts.length > 0 && !contactId) {
+      setFormError('Please choose a primary contact for this company.');
       return;
     }
 
@@ -131,15 +150,15 @@ export const Deals: React.FC = () => {
     const companyName = selectedCompany ? selectedCompany.name : 'Unknown';
 
     const selectedContact = contacts.find(c => c.id === contactId);
-    const contactName = selectedContact ? selectedContact.name : 'Unknown';
+    const contactName = selectedContact ? selectedContact.name : 'Unassigned';
 
     const dealData = {
-      name,
+      name: name.trim(),
       value: Number(value),
       stage,
       companyId,
       companyName,
-      contactId,
+      contactId: contactId || '',
       contactName,
       assignedSalespersonId,
     };
@@ -398,7 +417,7 @@ export const Deals: React.FC = () => {
                       <label className="block text-xs font-semibold text-crm-muted uppercase tracking-wider mb-2">Company Association *</label>
                       <select
                         value={companyId}
-                        onChange={(e) => setCompanyId(e.target.value)}
+                        onChange={(e) => handleCompanyChange(e.target.value)}
                         className="w-full bg-crm-bg border border-crm-border focus:border-primary rounded-xl px-4 py-2.5 text-sm text-crm-text outline-none transition cursor-pointer"
                         required
                       >
@@ -409,16 +428,22 @@ export const Deals: React.FC = () => {
                       </select>
                     </div>
                     <div>
-                      <label className="block text-xs font-semibold text-crm-muted uppercase tracking-wider mb-2">Primary Contact *</label>
+                      <label className="block text-xs font-semibold text-crm-muted uppercase tracking-wider mb-2">
+                        Primary Contact {availableContacts.length > 0 ? '*' : ''}
+                      </label>
                       <select
                         value={contactId}
                         onChange={(e) => setContactId(e.target.value)}
-                        className="w-full bg-crm-bg border border-crm-border focus:border-primary rounded-xl px-4 py-2.5 text-sm text-crm-text outline-none transition cursor-pointer"
-                        required
+                        className="w-full bg-crm-bg border border-crm-border focus:border-primary rounded-xl px-4 py-2.5 text-sm text-crm-text outline-none transition cursor-pointer disabled:opacity-50"
+                        required={availableContacts.length > 0}
+                        disabled={!companyId}
                       >
-                        <option value="" disabled>Select Contact</option>
-                        {contacts.map(c => (
-                          <option key={c.id} value={c.id}>{c.name}</option>
+                        {!companyId && <option value="" disabled>Select Company First</option>}
+                        {companyId && availableContacts.length === 0 && (
+                          <option value="">No contacts associated with this company</option>
+                        )}
+                        {availableContacts.map(c => (
+                          <option key={c.id} value={c.id}>{c.name} ({c.role || 'Contact'})</option>
                         ))}
                       </select>
                     </div>
