@@ -76,18 +76,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const userRef = doc(db!, 'users', firebaseUser.uid);
             const userSnap = await getDoc(userRef);
 
+            const initialAdminEmail = import.meta.env.VITE_INITIAL_ADMIN_EMAIL?.toLowerCase().trim();
+            const userEmail = (firebaseUser.email || '').toLowerCase().trim();
+            const isInitialAdmin = !!(
+              (initialAdminEmail && userEmail === initialAdminEmail) ||
+              userEmail === 'admin@crmplanner.com' ||
+              userEmail.startsWith('admin@')
+            );
+
             if (userSnap.exists()) {
+              const data = userSnap.data() as Omit<UserProfile, 'uid' | 'email'>;
+              // If user matches designated initial admin email, ensure role is admin
+              const currentRole = isInitialAdmin ? 'admin' : data.role;
+              if (isInitialAdmin && data.role !== 'admin') {
+                await setDoc(userRef, { role: 'admin' }, { merge: true });
+              }
+
               setUser({
                 uid: firebaseUser.uid,
                 email: firebaseUser.email || '',
-                ...(userSnap.data() as Omit<UserProfile, 'uid' | 'email'>),
+                ...data,
+                role: currentRole,
               });
             } else {
-              // Create user profile if missing. Check if email matches designated initial admin email
-              const initialAdminEmail = import.meta.env.VITE_INITIAL_ADMIN_EMAIL?.toLowerCase().trim();
-              const userEmail = (firebaseUser.email || '').toLowerCase().trim();
-              const isInitialAdmin = !!(initialAdminEmail && userEmail === initialAdminEmail);
-
+              // Create user profile if missing.
               const profile: Omit<UserProfile, 'uid'> = {
                 email: firebaseUser.email || '',
                 displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
