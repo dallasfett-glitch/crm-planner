@@ -61,7 +61,7 @@ export const useUserStore = create<UserStoreState>((set, get) => ({
           const data = docSnap.data();
           const displayName = data.displayName === 'John Salesperson' ? 'Rebecca Fett' : (data.displayName || 'Rebecca Fett');
           if (data.displayName === 'John Salesperson') {
-            updateDoc(doc(db, 'users', docSnap.id), { displayName: 'Rebecca Fett' }).catch(console.error);
+            updateDoc(doc(db!, 'users', docSnap.id), { displayName: 'Rebecca Fett' }).catch(console.error);
           }
           return {
             uid: docSnap.id,

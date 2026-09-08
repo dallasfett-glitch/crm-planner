@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { collection, onSnapshot, addDoc, deleteDoc, doc, Timestamp, query, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, deleteDoc, doc, updateDoc, Timestamp, query, orderBy } from 'firebase/firestore';
 import { db, isFirebaseConfigured } from '../firebase';
 
 export interface Note {
