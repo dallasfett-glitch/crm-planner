@@ -145,6 +145,29 @@ export const AdminUsers: React.FC = () => {
     }
   };
 
+  const handleDeleteUser = async () => {
+    if (!deleteConfirmUser) return;
+    setErrorMsg(null);
+    setSuccessMsg(null);
+
+    // Self-deletion safety check
+    if (deleteConfirmUser.uid === user?.uid) {
+      setErrorMsg('You cannot delete your own logged-in administrator account.');
+      setDeleteConfirmUser(null);
+      return;
+    }
+
+    try {
+      const targetName = deleteConfirmUser.displayName;
+      await deleteUser(deleteConfirmUser.uid);
+      setSuccessMsg(`User account for "${targetName}" has been permanently deleted.`);
+      setDeleteConfirmUser(null);
+      setTimeout(() => setSuccessMsg(null), 4000);
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : 'Failed to delete user profile.');
+    }
+  };
+
   const openEditModal = (targetUser: UserProfile) => {
     setEditingUser(targetUser);
     setEditDisplayName(targetUser.displayName);
@@ -231,24 +254,6 @@ export const AdminUsers: React.FC = () => {
       setTimeout(() => setSuccessMsg(null), 2000);
     } catch (err) {
       console.error('Failed to toggle user status:', err);
-    }
-  };
-
-  const handleDeleteUser = async () => {
-    if (!deleteConfirmUser) return;
-    if (deleteConfirmUser.uid === user?.uid) {
-      setErrorMsg('You cannot delete your own account.');
-      setDeleteConfirmUser(null);
-      return;
-    }
-    try {
-      await deleteUser(deleteConfirmUser.uid);
-      setSuccessMsg(`User "${deleteConfirmUser.displayName}" deleted successfully.`);
-      setDeleteConfirmUser(null);
-      setTimeout(() => setSuccessMsg(null), 2500);
-    } catch (err) {
-      console.error('Failed to delete user:', err);
-      setErrorMsg('Error deleting user.');
     }
   };
 
