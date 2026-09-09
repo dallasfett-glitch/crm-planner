@@ -4,6 +4,7 @@ import { useMeetingStore } from '../stores/useMeetingStore';
 import type { Meeting } from '../stores/useMeetingStore';
 import { useDealStore } from '../stores/useDealStore';
 import { useUserStore } from '../stores/useUserStore';
+import { getDeduplicatedSalespeople, type SalespersonEntity } from '../utils/userHelpers';
 import { 
   Shield, 
   Calendar, 
@@ -63,21 +64,32 @@ export const Compliance: React.FC = () => {
 
   const resolvedSalespersonId = isSalesperson ? currentUserId : selectedSalespersonId;
 
-  // Fetch unique list of salespeople present in database
-  const allSalespeople = React.useMemo(() => {
-    // Collect from users store
-    const list = [...users];
-    
-    // Add default mock users if not present in store
-    if (!list.some(u => u.uid === 'admin-uid')) {
-      list.push({ uid: 'admin-uid', email: 'admin@crmplanner.com', displayName: 'Admin User', role: 'admin' });
-    }
-    if (!list.some(u => u.uid === 'sales-uid')) {
-      list.push({ uid: 'sales-uid', email: 'sales@crmplanner.com', displayName: 'Rebecca Fett', role: 'salesperson' });
+  // Fetch unique list of salespeople present in database (deduplicated by normalized name/email)
+  const allSalespeople = React.useMemo<SalespersonEntity[]>(() => {
+    const deduped = getDeduplicatedSalespeople(users);
+
+    // Fallbacks if store is empty or missing defaults
+    if (!deduped.some(u => u.displayName.toLowerCase().includes('admin'))) {
+      deduped.unshift({
+        uid: 'admin-uid',
+        uids: new Set(['admin-uid']),
+        displayName: 'Admin',
+        email: 'admin@crmplanner.com',
+        role: 'admin',
+      });
     }
 
-    // Filter to only those with salesperson or admin roles who have logged meetings or exist in profile database
-    return list.filter(u => u.role === 'salesperson' || u.role === 'admin');
+    if (!deduped.some(u => u.displayName.toLowerCase().includes('rebecca'))) {
+      deduped.push({
+        uid: 'sales-uid',
+        uids: new Set(['sales-uid']),
+        displayName: 'Rebecca Fett',
+        email: 'sales@crmplanner.com',
+        role: 'salesperson',
+      });
+    }
+
+    return deduped;
   }, [users]);
 
   // 6 months list helper for historical drill-down
@@ -93,8 +105,6 @@ export const Compliance: React.FC = () => {
     return list;
   }, []);
 
-  // isMeetingOverdue helper is defined at module scope
-
   // Helper: check if meeting scheduledAt is on a specific day of the selected month
   const isMeetingOnDay = (meeting: Meeting, day: number, monthStr: string) => {
     if (meeting.month !== monthStr) return false;
@@ -108,14 +118,26 @@ export const Compliance: React.FC = () => {
     return new Date(year, month, 0).getDate();
   }, [selectedMonth]);
 
+  // Helper to match if meeting belongs to representative
+  const isMeetingForRep = (m: Meeting, rep: SalespersonEntity) => {
+    if (rep.uids.has(m.salespersonId)) return true;
+    if (m.salespersonId === rep.displayName) return true;
+    if (rep.email && m.salespersonId && m.salespersonId.toLowerCase() === rep.email.toLowerCase()) return true;
+    return false;
+  };
+
   // Filter meetings based on active selections
   const filteredMeetingsForMonth = React.useMemo(() => {
+    const targetRep = resolvedSalespersonId === 'all'
+      ? null
+      : allSalespeople.find(r => r.uids.has(resolvedSalespersonId) || r.uid === resolvedSalespersonId);
+
     return meetings.filter(m => {
       const matchMonth = m.month === selectedMonth;
-      const matchRep = resolvedSalespersonId === 'all' ? true : m.salespersonId === resolvedSalespersonId;
+      const matchRep = !targetRep ? true : isMeetingForRep(m, targetRep);
       return matchMonth && matchRep;
     });
-  }, [meetings, selectedMonth, resolvedSalespersonId]);
+  }, [meetings, selectedMonth, resolvedSalespersonId, allSalespeople]);
 
   // KPI Calculations
   const kpis = React.useMemo(() => {
@@ -136,9 +158,14 @@ export const Compliance: React.FC = () => {
 
     // 3. Pipeline Value (aggregated open deals from Deals Board)
     const openDeals = deals.filter(d => d.stage !== 'closed-won' && d.stage !== 'closed-lost');
-    const filteredDeals = resolvedSalespersonId === 'all'
+    const targetRep = resolvedSalespersonId === 'all'
+      ? null
+      : allSalespeople.find(r => r.uids.has(resolvedSalespersonId) || r.uid === resolvedSalespersonId);
+
+    const filteredDeals = !targetRep
       ? openDeals
-      : openDeals.filter(d => d.assignedSalespersonId === resolvedSalespersonId);
+      : openDeals.filter(d => d.assignedSalespersonId && (targetRep.uids.has(d.assignedSalespersonId) || d.assignedSalespersonId === targetRep.displayName));
+    
     const pipelineValue = filteredDeals.reduce((sum, d) => sum + d.value, 0);
 
     return {
@@ -150,12 +177,12 @@ export const Compliance: React.FC = () => {
       overdueCount,
       totalScheduled
     };
-  }, [filteredMeetingsForMonth, deals, resolvedSalespersonId, now]);
+  }, [filteredMeetingsForMonth, deals, resolvedSalespersonId, allSalespeople, now]);
 
   // Heatmap rows helper based on filters
   const heatmapReps = React.useMemo(() => {
     if (resolvedSalespersonId !== 'all') {
-      const rep = allSalespeople.find(u => u.uid === resolvedSalespersonId);
+      const rep = allSalespeople.find(u => u.uids.has(resolvedSalespersonId) || u.uid === resolvedSalespersonId);
       return rep ? [rep] : [];
     }
     return allSalespeople;
@@ -169,7 +196,7 @@ export const Compliance: React.FC = () => {
       if (m.status === 'completed') statusLabel = 'Completed';
       else if (isMeetingOverdue(m, now)) statusLabel = 'Overdue';
       
-      const rep = allSalespeople.find(u => u.uid === m.salespersonId);
+      const rep = allSalespeople.find(u => isMeetingForRep(m, u));
       const repName = rep ? rep.displayName : m.salespersonId;
 
       return [
@@ -364,7 +391,7 @@ export const Compliance: React.FC = () => {
             ) : (
               heatmapReps.map(rep => {
                 // Find all meetings for this rep in this month
-                const repMeetings = meetings.filter(m => m.salespersonId === rep.uid && m.month === selectedMonth);
+                const repMeetings = meetings.filter(m => isMeetingForRep(m, rep) && m.month === selectedMonth);
 
                 return (
                   <div key={rep.uid} className="flex items-center space-x-4">
@@ -523,7 +550,7 @@ export const Compliance: React.FC = () => {
                     statusText = 'Overdue';
                   }
 
-                  const rep = allSalespeople.find(u => u.uid === m.salespersonId);
+                  const rep = allSalespeople.find(u => isMeetingForRep(m, u));
                   const repName = rep ? rep.displayName : m.salespersonId;
 
                   return (
