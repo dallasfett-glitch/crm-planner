@@ -2046,7 +2046,7 @@ export const Meetings: React.FC = () => {
       {/* Add/Edit schedule dialog modal */}
       {addModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-xs animate-fade-in">
-          <div className="w-full max-w-xl bg-crm-card border border-crm-border rounded-3xl p-6 shadow-2xl relative text-crm-text animate-fade-in max-h-[95vh] overflow-y-auto">
+          <div className="w-full max-w-3xl bg-crm-card border border-crm-border rounded-3xl p-6 md:p-8 shadow-2xl relative text-crm-text animate-fade-in max-h-[95vh] overflow-y-auto">
             <button
               onClick={() => setAddModalOpen(false)}
               className="absolute top-4 right-4 p-1.5 rounded-lg text-crm-muted hover:text-crm-text hover:bg-crm-bg transition border border-transparent hover:border-crm-border"
@@ -2105,10 +2105,10 @@ export const Meetings: React.FC = () => {
               </div>
             ) : (
             <form onSubmit={handleScheduleMeeting}>
-              <div className="flex gap-6">
+              <div className="flex flex-col md:flex-row gap-6">
 
                 {/* Left column: who */}
-                <div className="flex flex-col gap-4 w-48 shrink-0">
+                <div className="flex flex-col gap-4 w-full md:w-80 shrink-0">
                   <div>
                     <label className="block text-xs font-semibold text-crm-muted uppercase tracking-wider mb-2">Company</label>
                     <select

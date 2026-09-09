@@ -496,31 +496,30 @@ export const Contacts: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-semibold text-crm-muted uppercase tracking-wider mb-2">Role / Title</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. CEO or Manager"
-                        value={role}
-                        onChange={(e) => setRole(e.target.value)}
-                        className="w-full bg-crm-bg border border-crm-border focus:border-primary rounded-xl px-4 py-2.5 text-sm text-crm-text placeholder-crm-muted outline-none transition"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-crm-muted uppercase tracking-wider mb-2">Company Association *</label>
-                      <select
-                        value={companyId}
-                        onChange={(e) => setCompanyId(e.target.value)}
-                        className="w-full bg-crm-bg border border-crm-border focus:border-primary rounded-xl px-4 py-2.5 text-sm text-crm-text outline-none transition cursor-pointer"
-                        required
-                      >
-                        <option value="" disabled>Select Company</option>
-                        {companies.map(c => (
-                          <option key={c.id} value={c.id}>{c.name}</option>
-                        ))}
-                      </select>
-                    </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-crm-muted uppercase tracking-wider mb-2">Company Association *</label>
+                    <select
+                      value={companyId}
+                      onChange={(e) => setCompanyId(e.target.value)}
+                      className="w-full bg-crm-bg border border-crm-border focus:border-primary rounded-xl px-4 py-2.5 text-sm font-medium text-crm-text outline-none transition cursor-pointer"
+                      required
+                    >
+                      <option value="" disabled>Select Company</option>
+                      {companies.map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-crm-muted uppercase tracking-wider mb-2">Role / Title</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. CEO or Manager"
+                      value={role}
+                      onChange={(e) => setRole(e.target.value)}
+                      className="w-full bg-crm-bg border border-crm-border focus:border-primary rounded-xl px-4 py-2.5 text-sm text-crm-text placeholder-crm-muted outline-none transition"
+                    />
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">

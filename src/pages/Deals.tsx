@@ -423,41 +423,40 @@ export const Deals: React.FC = () => {
                 <div className="space-y-5 bg-crm-bg/30 p-6 rounded-2xl border border-crm-border/80">
                   <h4 className="text-xs font-bold text-primary uppercase tracking-wider border-b border-crm-border/60 pb-2.5">Associations & Ownership</h4>
                   
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-crm-muted uppercase tracking-wider mb-2">Company Association *</label>
-                      <select
-                        value={companyId}
-                        onChange={(e) => handleCompanyChange(e.target.value)}
-                        className="w-full bg-crm-bg border border-crm-border focus:border-primary rounded-xl px-4 py-3 text-sm text-crm-text outline-none transition cursor-pointer shadow-xs"
-                        required
-                      >
-                        <option value="" disabled>Select Company</option>
-                        {companies.map(c => (
-                          <option key={c.id} value={c.id}>{c.name}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-crm-muted uppercase tracking-wider mb-2">
-                        Primary Contact {availableContacts.length > 0 ? '*' : ''}
-                      </label>
-                      <select
-                        value={contactId}
-                        onChange={(e) => setContactId(e.target.value)}
-                        className="w-full bg-crm-bg border border-crm-border focus:border-primary rounded-xl px-4 py-3 text-sm text-crm-text outline-none transition cursor-pointer disabled:opacity-50 shadow-xs"
-                        required={availableContacts.length > 0}
-                        disabled={!companyId}
-                      >
-                        {!companyId && <option value="" disabled>Select Company First</option>}
-                        {companyId && availableContacts.length === 0 && (
-                          <option value="">No contacts associated with this company</option>
-                        )}
-                        {availableContacts.map(c => (
-                          <option key={c.id} value={c.id}>{c.name} ({c.role || 'Contact'})</option>
-                        ))}
-                      </select>
-                    </div>
+                  <div>
+                    <label className="block text-xs font-bold text-crm-muted uppercase tracking-wider mb-2">Company Association *</label>
+                    <select
+                      value={companyId}
+                      onChange={(e) => handleCompanyChange(e.target.value)}
+                      className="w-full bg-crm-bg border border-crm-border focus:border-primary rounded-xl px-4 py-3 text-sm font-medium text-crm-text outline-none transition cursor-pointer shadow-xs"
+                      required
+                    >
+                      <option value="" disabled>Select Company</option>
+                      {companies.map(c => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-crm-muted uppercase tracking-wider mb-2">
+                      Primary Contact {availableContacts.length > 0 ? '*' : ''}
+                    </label>
+                    <select
+                      value={contactId}
+                      onChange={(e) => setContactId(e.target.value)}
+                      className="w-full bg-crm-bg border border-crm-border focus:border-primary rounded-xl px-4 py-3 text-sm font-medium text-crm-text outline-none transition cursor-pointer disabled:opacity-50 shadow-xs"
+                      required={availableContacts.length > 0}
+                      disabled={!companyId}
+                    >
+                      {!companyId && <option value="" disabled>Select Company First</option>}
+                      {companyId && availableContacts.length === 0 && (
+                        <option value="">No contacts associated with this company</option>
+                      )}
+                      {availableContacts.map(c => (
+                        <option key={c.id} value={c.id}>{c.name} ({c.role || 'Contact'})</option>
+                      ))}
+                    </select>
                   </div>
 
                   <div>
@@ -465,7 +464,7 @@ export const Deals: React.FC = () => {
                     <select
                       value={assignedSalespersonId}
                       onChange={(e) => setAssignedSalespersonId(e.target.value)}
-                      className="w-full bg-crm-bg border border-crm-border focus:border-primary rounded-xl px-4 py-3 text-sm text-crm-text outline-none transition cursor-pointer shadow-xs"
+                      className="w-full bg-crm-bg border border-crm-border focus:border-primary rounded-xl px-4 py-3 text-sm font-medium text-crm-text outline-none transition cursor-pointer shadow-xs"
                       required
                     >
                       {activeSalespeople.map((u) => (

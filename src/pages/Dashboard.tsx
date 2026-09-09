@@ -325,7 +325,7 @@ export const Dashboard: React.FC = () => {
                             </span>
                           ) : meeting.status === 'suggested' ? (
                             <span className="text-xs bg-purple-500/10 text-purple-600 dark:text-purple-450 border border-purple-500/25 px-2.5 py-1 rounded-full font-bold">
-                              AI Suggested
+                              Suggested
                             </span>
                           ) : (
                             <span className="text-xs bg-crm-bg text-crm-muted border border-crm-border px-2.5 py-1 rounded-full font-semibold">
